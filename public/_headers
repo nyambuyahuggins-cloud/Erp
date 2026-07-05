@@ -1,0 +1,32 @@
+# Service worker — must never be cached or updates won't reach mobile users
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate, max-age=0
+  Pragma: no-cache
+
+/workbox-*.js
+  Cache-Control: no-cache, no-store, must-revalidate, max-age=0
+  Pragma: no-cache
+
+# Web app manifest — revalidate every visit
+/manifest.webmanifest
+  Cache-Control: no-cache, must-revalidate, max-age=0
+
+# HTML shell — no caching, ensures fresh SW check on open
+/*.html
+  Cache-Control: no-cache, must-revalidate, max-age=0
+/
+  Cache-Control: no-cache, must-revalidate, max-age=0
+
+# Hashed JS/CSS assets — cache forever, they're content-addressed
+/assets/*.js
+  Cache-Control: public, max-age=31536000, immutable
+/assets/*.css
+  Cache-Control: public, max-age=31536000, immutable
+
+# Fonts and images — long cache
+/assets/*.woff2
+  Cache-Control: public, max-age=31536000, immutable
+/assets/*.png
+  Cache-Control: public, max-age=31536000, immutable
+/assets/*.svg
+  Cache-Control: public, max-age=86400
