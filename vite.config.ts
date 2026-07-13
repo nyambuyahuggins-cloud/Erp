@@ -37,6 +37,14 @@ export default defineConfig({
         runtimeCaching: [
           // HTML / navigation — always try network, fall back to cache.
           // Timeout of 5s means on mobile data it doesn't hang forever.
+          // handlerDidError is explicit and load-bearing: if the network
+          // times out AND there's no cached response for this exact route
+          // (e.g. a first-ever visit to /login on a slow connection, or any
+          // route that was never cached before), NetworkFirst has nothing
+          // left to fall back to and will reject — which without this
+          // handler can surface as a bare failed navigation ("404"-looking)
+          // instead of the app shell. This guarantees index.html always
+          // loads so React Router can take over client-side.
           {
             urlPattern: ({ request }: { request: Request }) => request.mode === 'navigate',
             handler: 'NetworkFirst',
@@ -44,6 +52,19 @@ export default defineConfig({
               cacheName: 'navigation',
               networkTimeoutSeconds: 5,
               cacheableResponse: { statuses: [0, 200] },
+              plugins: [{
+                // Falls back to whatever the 'navigation' cache has for '/' —
+                // NOT '/index.html': no request in this SPA is ever literally
+                // for that path, so matching against it here would (almost)
+                // never hit. '/' is a safe, reliable target instead, since
+                // the manifest's start_url is '/', guaranteeing it gets
+                // requested — and normally cached — on every app open.
+                handlerDidError: async () => {
+                  const cachesApi: any = (globalThis as any).caches
+                  const cache = await cachesApi.open('navigation')
+                  return (await cache.match('/')) || (await cache.match('/', { ignoreSearch: true }))
+                },
+              }],
             },
           },
 

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { syncEngine } from '../lib/syncEngine'
+import { parseUserAgent } from '../lib/deviceInfo'
 import type { Plan } from '../lib/planEnforcement'
 
 export interface Profile {
@@ -20,6 +21,10 @@ export interface Post {
   id: string; title: string; level_id: string; entity_id: string
   hierarchy_levels: HierarchyLevel
 }
+export interface RoleAssignment {
+  post_id: string; is_primary: boolean
+  posts: Post
+}
 export interface Tenant {
   id: string; name: string; plan: Plan; plan_employee_limit: number
   plan_branch_limit: number; white_label_enabled: boolean; api_enabled: boolean
@@ -37,9 +42,11 @@ export interface Branding {
 interface AuthContextType {
   session: Session | null; user: User | null; profile: Profile | null
   post: Post | null; tenant: Tenant | null; branding: Branding | null; loading: boolean
+  roleAssignments: RoleAssignment[]
   activeEntityId: string | null
   effectivePlan: Plan
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
+  signInWithPasskey: () => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
   refreshBranding: () => Promise<void>
@@ -60,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [post, setPost] = useState<Post | null>(null)
+  const [roleAssignments, setRoleAssignments] = useState<RoleAssignment[]>([])
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [branding, setBranding] = useState<Branding | null>(null)
   const [loading, setLoading] = useState(true)
@@ -112,11 +120,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: profileData } = await supabase.from('user_profiles').select('*').eq('id', userId).single()
       if (!profileData) return
       setProfile(profileData)
-      setActiveEntityId(profileData.active_entity_id || profileData.entity_id)
-      if (profileData.post_id) {
+      const resolvedEntityId = profileData.active_entity_id || profileData.entity_id
+      setActiveEntityId(resolvedEntityId)
+
+      // Load every role this user holds (across entities), then use whichever
+      // one applies to the currently active entity — falling back to their
+      // primary post if they don't hold a distinct role there. This is what
+      // makes rank/permissions entity-aware: switching entities (which
+      // already reloads the app) re-resolves this from scratch.
+      const { data: assignments } = await supabase.from('user_role_assignments')
+        .select('post_id, is_primary, posts!post_id(id, title, level_id, entity_id, hierarchy_levels(*))')
+        .eq('user_id', userId)
+      const roleList = (assignments || []) as unknown as RoleAssignment[]
+      setRoleAssignments(roleList)
+
+      const forEntity = roleList.find(a => a.posts?.entity_id === resolvedEntityId)
+      if (forEntity?.posts) {
+        setPost(forEntity.posts)
+      } else if (profileData.post_id) {
         const { data: postData } = await supabase.from('posts').select('*, hierarchy_levels(*)').eq('id', profileData.post_id).single()
         if (postData) setPost(postData as Post)
       }
+
       const { data: tenantData } = await supabase.from('tenants')
         .select('id,name,plan,plan_employee_limit,plan_branch_limit,white_label_enabled,api_enabled,supported_currencies,currency_base,color_mode,petty_cash_limit,dual_approval_threshold,plan_confirmed,subdomain')
         .eq('id', profileData.tenant_id).single()
@@ -159,10 +184,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { mounted = false; subscription.unsubscribe() }
   }, [fetchProfile])
 
+  // Shared by both password and passkey sign-in — logs the attempt and
+  // creates/enforces the session record so both paths behave identically
+  // (passkey sign-ins previously would have bypassed session tracking and
+  // the 2-session limit entirely if wired up separately).
+  const trackSuccessfulLogin = async (userId: string, email: string | null) => {
+    if (email) supabase.from('login_attempts').insert({ email, success: true }).then(() => {}, () => {})
+    try {
+      const { data: prof } = await supabase.from('user_profiles').select('tenant_id').eq('id', userId).single()
+      if (!prof) return
+      const { device_type, browser, os } = parseUserAgent(navigator.userAgent)
+      await supabase.from('user_sessions').insert({
+        tenant_id: prof.tenant_id, user_id: userId,
+        session_token: crypto.randomUUID(),
+        device_type, browser, os,
+        is_current: true,
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      })
+      const { data: active } = await supabase.from('user_sessions')
+        .select('id, created_at').eq('user_id', userId).is('invalidated_at', null)
+        .order('created_at', { ascending: false })
+      if (active && active.length > 2) {
+        const toInvalidate = active.slice(2).map(s => s.id)
+        await supabase.from('user_sessions').update({
+          invalidated_at: new Date().toISOString(), invalidated_reason: 'session_limit',
+        }).in('id', toInvalidate)
+      }
+    } catch { /* session tracking is best-effort, never block login on it */ }
+  }
+
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    supabase.from('login_attempts').insert({ email, success: !error }).then(() => {}, () => {})
+    if (!error && data.user) await trackSuccessfulLogin(data.user.id, data.user.email ?? email)
     return { error }
   }
+
+  const signInWithPasskey = async () => {
+    const { data, error } = await supabase.auth.signInWithPasskey()
+    if (!error && data?.user) await trackSuccessfulLogin(data.user.id, data.user.email ?? null)
+    return { error }
+  }
+
   const signOut = async () => {
     if (typeof window !== 'undefined') sessionStorage.removeItem('vela_demo_tier')
     await supabase.auth.signOut()
@@ -184,9 +247,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ) as Plan
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, post, tenant, branding, loading, activeEntityId,
+    <AuthContext.Provider value={{ session, user, profile, post, tenant, branding, loading, activeEntityId, roleAssignments,
       effectivePlan,
-      signIn, signOut, refreshProfile, refreshBranding, switchEntity }}>
+      signIn, signInWithPasskey, signOut, refreshProfile, refreshBranding, switchEntity }}>
       {children}
     </AuthContext.Provider>
   )

@@ -4,12 +4,17 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { Download, Plus, X, Trash2 } from 'lucide-react'
 import TabBar from '../components/TabBar'
+import { notify } from '../lib/notify'
+import { useToast } from '../components/ui/Toast'
 
 export default function AccountingPage({ embedded }: { embedded?: boolean }) {
   const { profile, post } = useAuth()
-  const [tab, setTab] = useState<'budgets' | 'queue' | 'purchase_orders' | 'interentity' | 'zimra'>('budgets')
+  const { toast } = useToast()
+  const [tab, setTab] = useState<'budgets' | 'queue' | 'receipts' | 'purchase_orders' | 'interentity' | 'zimra'>('budgets')
   const [budgets, setBudgets] = useState<any[]>([])
   const [pendingRequests, setPendingRequests] = useState<any[]>([])
+  const [pendingReceipts, setPendingReceipts] = useState<any[]>([])
+  const [remindingId, setRemindingId] = useState<string | null>(null)
   const [interEntityTx, setInterEntityTx] = useState<any[]>([])
   const [zimraData, setZimraData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -39,6 +44,12 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
         .select('*, user_profiles!requester_id(full_name), entities!entity_id(name)')
         .eq('tenant_id', tid).in('status', ['pending', 'endorsed']).order('created_at')
       setPendingRequests(data || [])
+    } else if (tab === 'receipts') {
+      const { data } = await supabase.from('funding_requests')
+        .select('*, user_profiles!requester_id(full_name), entities!entity_id(name)')
+        .eq('tenant_id', tid).eq('receipt_status', 'pending')
+        .order('approved_at', { ascending: true })
+      setPendingReceipts(data || [])
     } else if (tab === 'interentity') {
       const { data } = await supabase.from('inter_entity_transactions')
         .select('*, entities!initiating_entity(name), user_profiles!submitted_by(full_name)')
@@ -112,6 +123,26 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
     loadAll()
   }
 
+  async function remindReceipt(r: any) {
+    setRemindingId(r.id)
+    await notify({
+      tenant_id: profile!.tenant_id, user_id: r.requester_id,
+      title: `Receipt needed for ${r.ref}`,
+      body: `Accounting is waiting on your receipt/proof of purchase for ${r.ref} (USD ${parseFloat(r.amount).toFixed(2)}). Please upload it from your Requests page.`,
+      category: 'requests', action_url: '/requests', priority: 'high',
+    })
+    setRemindingId(null)
+    toast('success', 'Reminder sent', `Reminder sent to ${r.user_profiles?.full_name || 'requester'}.`)
+  }
+
+  async function resolveReceipt(id: string, status: 'uploaded' | 'waived') {
+    await supabase.from('funding_requests').update({
+      receipt_status: status,
+      ...(status === 'uploaded' ? { receipt_uploaded_at: new Date().toISOString() } : {})
+    }).eq('id', id)
+    loadAll()
+  }
+
   function exportZimraCSV() {
     const rows = [['Invoice Ref', 'Date', 'Description', 'Entity', 'Net Amount', 'VAT 15%', 'Gross Amount', 'Submitted By']]
     zimraData.forEach(r => rows.push([r.invoice_ref, r.transaction_date, r.description, r.entity_name, r.net_amount, r.vat_15, r.gross_amount, r.submitted_by]))
@@ -136,7 +167,7 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <TabBar>
-          {(['budgets', 'queue', 'purchase_orders', 'interentity', 'zimra'] as const).map(t => (
+          {(['budgets', 'queue', 'receipts', 'purchase_orders', 'interentity', 'zimra'] as const).map(t => (
             <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)} style={{ textTransform: 'capitalize' }}>
               {t === 'interentity' ? 'Inter-Entity' : t === 'zimra' ? 'ZIMRA' : t === 'purchase_orders' ? 'Purchase Orders' : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
@@ -216,6 +247,41 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
                           {r.status === 'approved' && (
                             <button className="btn-gold" style={{ padding: '0.3rem 0.7rem', fontSize: 'var(--text-micro)' }} onClick={() => markFunded(r.id)}>Mark Funded</button>
                           )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+              </tbody>
+            </table>
+          </div>
+        ) : tab === 'receipts' ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead><tr><th>Ref</th><th>Requester</th><th>Entity</th><th>Amount</th><th>Category</th><th>Awaiting since</th><th>Actions</th></tr></thead>
+              <tbody>
+                {pendingReceipts.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No outstanding receipts — all clear 🎉</td></tr>
+                  : pendingReceipts.map(r => {
+                    const since = r.approved_at || r.funded_at || r.created_at
+                    const daysOld = Math.floor((Date.now() - new Date(since).getTime()) / 86400000)
+                    return (
+                      <tr key={r.id}>
+                        <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)', color: 'var(--gold)' }}>{r.ref}</td>
+                        <td>{r.user_profiles?.full_name}</td>
+                        <td style={{ color: 'var(--text-muted)' }}>{r.entities?.name}</td>
+                        <td style={{ fontFamily: "'JetBrains Mono', monospace" }}>USD {parseFloat(r.amount).toFixed(2)}</td>
+                        <td>{r.category}</td>
+                        <td style={{ color: daysOld >= 7 ? 'var(--warning)' : 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{daysOld}d {daysOld >= 7 ? '⚠️' : ''}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            <button className="btn-ghost" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)' }}
+                              onClick={() => remindReceipt(r)} disabled={remindingId === r.id}>
+                              {remindingId === r.id ? 'Sending…' : '🔔 Remind'}
+                            </button>
+                            <button className="btn-ghost" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)', color: 'var(--success)' }}
+                              onClick={() => resolveReceipt(r.id, 'uploaded')}>Mark Received</button>
+                            <button className="btn-ghost" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}
+                              onClick={() => resolveReceipt(r.id, 'waived')}>Waive</button>
+                          </div>
                         </td>
                       </tr>
                     )

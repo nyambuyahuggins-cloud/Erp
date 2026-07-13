@@ -332,6 +332,9 @@ export function ReportsPage() {
         <Plus size={14} /> Subscribe
       </button>
     }>
+      <div className="card" style={{ marginBottom: '1.25rem', background: 'var(--info-dim)', border: '1px solid var(--border)', fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>
+        📨 Subscriptions are saved immediately, but actual delivery requires the <strong style={{ color: 'var(--gold)' }}>Email API</strong> add-on to be provisioned first (Admin → Add-ons). Until then, subscriptions won't generate deliveries.
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
         {/* Subscriptions */}
         <div>

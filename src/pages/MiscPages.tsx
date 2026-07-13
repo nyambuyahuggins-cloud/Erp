@@ -15,12 +15,20 @@ export function OversightPage({ embedded }: { embedded?: boolean }) {
   const [loading, setLoading] = useState(true)
   const [showSoftDeleted, setShowSoftDeleted] = useState(false)
   const [showActingModal, setShowActingModal] = useState(false)
-  const [actingForm, setActingForm] = useState({ from_user: '', to_user: '', expires_at: '', reason: '' })
+  const [actingForm, setActingForm] = useState({ absent_user_id: '', acting_user_id: '', end_date: '', reason: '' })
+  const [delegations, setDelegations] = useState<any[]>([])
 
   const level = post?.hierarchy_levels
   const isManager = level && level.rank <= 2
+  const canManageRoles = !!((level && level.rank <= 1) || level?.is_it_admin)
 
-  useEffect(() => { if (profile) { loadTeam(); loadUsers() } }, [profile, showSoftDeleted])
+  const [roleModalUser, setRoleModalUser] = useState<any>(null)
+  const [allPosts, setAllPosts] = useState<any[]>([])
+  const [userRoles, setUserRoles] = useState<any[]>([])
+  const [addRolePostId, setAddRolePostId] = useState('')
+  const [roleBusy, setRoleBusy] = useState(false)
+
+  useEffect(() => { if (profile) { loadTeam(); loadUsers(); loadDelegations() } }, [profile, showSoftDeleted])
 
   async function loadTeam() {
     let q = supabase.from('user_profiles')
@@ -63,18 +71,80 @@ export function OversightPage({ embedded }: { embedded?: boolean }) {
     loadTeam(); loadUsers()
   }
 
+  async function loadDelegations() {
+    const { data } = await supabase.from('acting_authority')
+      .select('*, absent:user_profiles!absent_user_id(full_name), acting:user_profiles!acting_user_id(full_name)')
+      .eq('tenant_id', profile!.tenant_id)
+      .eq('is_active', true)
+      .order('end_date', { ascending: true })
+    setDelegations(data || [])
+  }
+
   async function createActingAuthority() {
-    if (!actingForm.from_user || !actingForm.to_user || !actingForm.expires_at) return
+    if (!actingForm.absent_user_id || !actingForm.acting_user_id || !actingForm.end_date) return
     await supabase.from('acting_authority').insert({
       tenant_id: profile!.tenant_id,
-      from_user: actingForm.from_user,
-      to_user: actingForm.to_user,
-      expires_at: actingForm.expires_at,
+      absent_user_id: actingForm.absent_user_id,
+      acting_user_id: actingForm.acting_user_id,
+      start_date: new Date().toISOString().split('T')[0],
+      end_date: actingForm.end_date,
+      granted_by: profile!.id,
       reason: actingForm.reason,
+      is_active: true,
       activated_at: new Date().toISOString()
     })
     setShowActingModal(false)
-    setActingForm({ from_user: '', to_user: '', expires_at: '', reason: '' })
+    setActingForm({ absent_user_id: '', acting_user_id: '', end_date: '', reason: '' })
+    loadDelegations()
+  }
+
+  async function revokeActingAuthority(id: string) {
+    await supabase.from('acting_authority').update({ is_active: false, deactivated_at: new Date().toISOString() }).eq('id', id)
+    loadDelegations()
+  }
+
+  async function openRoleModal(user: any) {
+    setRoleModalUser(user)
+    setAddRolePostId('')
+    const [{ data: posts }, { data: roles }] = await Promise.all([
+      supabase.from('posts').select('id, title, entity_id, entities!entity_id(name), hierarchy_levels(name, rank)')
+        .eq('tenant_id', profile!.tenant_id).eq('is_active', true).order('title'),
+      supabase.from('user_role_assignments').select('id, post_id, is_primary, posts!post_id(title, entity_id, entities!entity_id(name), hierarchy_levels(name, rank))')
+        .eq('user_id', user.id).order('is_primary', { ascending: false }),
+    ])
+    setAllPosts(posts || [])
+    setUserRoles(roles || [])
+  }
+
+  async function setPrimaryRole(postId: string) {
+    if (!roleModalUser) return
+    setRoleBusy(true)
+    await supabase.from('user_profiles').update({ post_id: postId }).eq('id', roleModalUser.id)
+    // Sync the assignments table: clear old primary flag, upsert this one as primary.
+    await supabase.from('user_role_assignments').update({ is_primary: false }).eq('user_id', roleModalUser.id)
+    await supabase.from('user_role_assignments').upsert(
+      { tenant_id: profile!.tenant_id, user_id: roleModalUser.id, post_id: postId, is_primary: true, created_by: profile!.id },
+      { onConflict: 'user_id,post_id' }
+    )
+    await openRoleModal({ ...roleModalUser, post_id: postId })
+    loadTeam(); loadUsers()
+    setRoleBusy(false)
+  }
+
+  async function addRoleInEntity() {
+    if (!roleModalUser || !addRolePostId) return
+    setRoleBusy(true)
+    await supabase.from('user_role_assignments').insert({
+      tenant_id: profile!.tenant_id, user_id: roleModalUser.id, post_id: addRolePostId, is_primary: false, created_by: profile!.id,
+    })
+    setAddRolePostId('')
+    await openRoleModal(roleModalUser)
+    setRoleBusy(false)
+  }
+
+  async function removeRoleAssignment(id: string) {
+    await supabase.from('user_role_assignments').delete().eq('id', id)
+    await openRoleModal(roleModalUser)
   }
 
   const displayUsers = tab === 'team' ? team : users
@@ -99,6 +169,22 @@ export function OversightPage({ embedded }: { embedded?: boolean }) {
         <button className={`tab ${tab === 'team' ? 'active' : ''}`} onClick={() => setTab('team')}>Team ({team.length})</button>
         <button className={`tab ${tab === 'users' ? 'active' : ''}`} onClick={() => setTab('users')}>All Users</button>
       </TabBar>
+      {isManager && delegations.length > 0 && (
+        <div className="card" style={{ marginBottom: '1rem', background: 'var(--gold-wash)', border: '1px solid var(--gold-ring)' }}>
+          <p style={{ margin: '0 0 0.6rem', fontSize: 'var(--text-micro)', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Active Delegations</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {delegations.map(d => (
+              <div key={d.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', fontSize: 'var(--text-small)' }}>
+                <span>
+                  <strong>{d.acting?.full_name}</strong> is acting for <strong>{d.absent?.full_name}</strong>
+                  <span style={{ color: 'var(--text-muted)' }}> · until {new Date(d.end_date).toLocaleDateString()}{d.reason ? ` · ${d.reason}` : ''}</span>
+                </span>
+                <button className="btn-ghost" style={{ padding: '0.25rem 0.6rem', fontSize: 'var(--text-micro)', color: 'var(--danger)', flexShrink: 0 }} onClick={() => revokeActingAuthority(d.id)}>Revoke</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div> : (
           <div style={{ overflowX: 'auto' }}>
@@ -122,13 +208,18 @@ export function OversightPage({ embedded }: { embedded?: boolean }) {
                     {isManager && (
                       <td>
                         {u.id !== profile?.id && (
-                          u.deleted_at ? (
-                            <button onClick={() => reactivateUser(u.id, u.full_name)} className="btn-ghost" style={{ fontSize: 'var(--text-micro)', padding: '0.25rem 0.6rem', color: 'var(--success)' }}>Reactivate</button>
-                          ) : (
-                            <button onClick={() => softDeleteUser(u.id, u.full_name)} style={{ background: 'var(--danger-dim)', border: 'none', borderRadius: 6, color: 'var(--danger)', cursor: 'pointer', padding: '0.3rem 0.5rem' }}>
-                              <Trash2 size={12} />
-                            </button>
-                          )
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {canManageRoles && !u.deleted_at && (
+                              <button onClick={() => openRoleModal(u)} className="btn-ghost" style={{ fontSize: 'var(--text-micro)', padding: '0.25rem 0.6rem' }}>Manage Role</button>
+                            )}
+                            {u.deleted_at ? (
+                              <button onClick={() => reactivateUser(u.id, u.full_name)} className="btn-ghost" style={{ fontSize: 'var(--text-micro)', padding: '0.25rem 0.6rem', color: 'var(--success)' }}>Reactivate</button>
+                            ) : (
+                              <button onClick={() => softDeleteUser(u.id, u.full_name)} style={{ background: 'var(--danger-dim)', border: 'none', borderRadius: 6, color: 'var(--danger)', cursor: 'pointer', padding: '0.3rem 0.5rem' }}>
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </td>
                     )}
@@ -151,21 +242,21 @@ export function OversightPage({ embedded }: { embedded?: boolean }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Delegating From</label>
-                <select className="input" value={actingForm.from_user} onChange={e => setActingForm({ ...actingForm, from_user: e.target.value })}>
+                <select className="input" value={actingForm.absent_user_id} onChange={e => setActingForm({ ...actingForm, absent_user_id: e.target.value })}>
                   <option value="">Select user...</option>
                   {team.filter(u => !u.deleted_at).map(u => <option key={u.id} value={u.id}>{u.full_name} — {u.posts?.title}</option>)}
                 </select>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Acting User</label>
-                <select className="input" value={actingForm.to_user} onChange={e => setActingForm({ ...actingForm, to_user: e.target.value })}>
+                <select className="input" value={actingForm.acting_user_id} onChange={e => setActingForm({ ...actingForm, acting_user_id: e.target.value })}>
                   <option value="">Select user...</option>
-                  {team.filter(u => !u.deleted_at && u.id !== actingForm.from_user).map(u => <option key={u.id} value={u.id}>{u.full_name} — {u.posts?.title}</option>)}
+                  {team.filter(u => !u.deleted_at && u.id !== actingForm.absent_user_id).map(u => <option key={u.id} value={u.id}>{u.full_name} — {u.posts?.title}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Expires At</label>
-                <input className="input" type="datetime-local" value={actingForm.expires_at} onChange={e => setActingForm({ ...actingForm, expires_at: e.target.value })} />
+                <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Ends On</label>
+                <input className="input" type="date" min={new Date().toISOString().split('T')[0]} value={actingForm.end_date} onChange={e => setActingForm({ ...actingForm, end_date: e.target.value })} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Reason</label>
@@ -175,6 +266,53 @@ export function OversightPage({ embedded }: { embedded?: boolean }) {
                 <button className="btn-ghost" onClick={() => setShowActingModal(false)}>Cancel</button>
                 <button className="btn-gold" onClick={createActingAuthority}>Assign</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {roleModalUser && (
+        <div className="modal-backdrop" onClick={() => setRoleModalUser(null)}>
+          <div className="card" style={{ width: '100%', maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ margin: 0, fontFamily: "'Playfair Display', serif", fontSize: 'var(--text-body)' }}>Manage Role — {roleModalUser.full_name}</h3>
+              <button onClick={() => setRoleModalUser(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Primary Role</label>
+            <select className="input" value={roleModalUser.post_id || ''} disabled={roleBusy} onChange={e => setPrimaryRole(e.target.value)} style={{ marginBottom: '1.25rem' }}>
+              {allPosts.map(p => (
+                <option key={p.id} value={p.id}>{p.title} — {p.hierarchy_levels?.name} · {p.entities?.name}</option>
+              ))}
+            </select>
+
+            {userRoles.filter(r => !r.is_primary).length > 0 && (
+              <>
+                <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Additional Entity Roles</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: '1.25rem' }}>
+                  {userRoles.filter(r => !r.is_primary).map(r => (
+                    <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--bg-900)', borderRadius: 8 }}>
+                      <span style={{ fontSize: 'var(--text-small)' }}>{r.posts?.title} — {r.posts?.hierarchy_levels?.name} · <span style={{ color: 'var(--text-muted)' }}>{r.posts?.entities?.name}</span></span>
+                      <button className="btn-ghost" style={{ padding: '0.2rem 0.5rem', fontSize: 'var(--text-micro)', color: 'var(--danger)' }} onClick={() => removeRoleAssignment(r.id)}>Remove</button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Add a Role in Another Entity
+            </label>
+            <p style={{ fontSize: 'var(--text-micro)', color: 'var(--text-muted)', margin: '0 0 0.5rem' }}>
+              Lets this person hold a different rank in a different entity — e.g. Dept Manager here, Staff elsewhere.
+            </p>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <select className="input" value={addRolePostId} onChange={e => setAddRolePostId(e.target.value)}>
+                <option value="">Select a role...</option>
+                {allPosts.filter(p => !userRoles.some(r => r.post_id === p.id)).map(p => (
+                  <option key={p.id} value={p.id}>{p.title} — {p.hierarchy_levels?.name} · {p.entities?.name}</option>
+                ))}
+              </select>
+              <button className="btn-gold" disabled={!addRolePostId || roleBusy} onClick={addRoleInEntity} style={{ flexShrink: 0 }}>Add</button>
             </div>
           </div>
         </div>
@@ -477,7 +615,13 @@ export function ProfilePage() {
                   {s.invalidated_at ? (
                     <span className="badge badge-draft" style={{ fontSize: 'var(--text-micro)' }}>Ended</span>
                   ) : (
-                    <span className="badge badge-active" style={{ fontSize: 'var(--text-micro)' }}>Active</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="badge badge-active" style={{ fontSize: 'var(--text-micro)' }}>Active</span>
+                      <button className="btn-ghost" style={{ padding: '0.2rem 0.5rem', fontSize: 'var(--text-micro)', color: 'var(--danger)' }}
+                        onClick={async () => { await supabase.from('user_sessions').update({ invalidated_at: new Date().toISOString(), invalidated_reason: 'manual' }).eq('id', s.id); loadSessions() }}>
+                        Sign out
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}

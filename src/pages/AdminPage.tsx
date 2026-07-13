@@ -150,7 +150,8 @@ function UsersTab({ profile, tenant }: any) {
           tenant_id: profile.tenant_id,
           entity_id: form.entity_id,
           post_id: form.post_id,
-        }
+        },
+        emailRedirectTo: `${window.location.origin}/login`,
       }
     })
 
@@ -305,6 +306,9 @@ function UsersTab({ profile, tenant }: any) {
               <p style={{ margin: '0 0 0.5rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>TEMPORARY PASSWORD</p>
               <p style={{ margin: 0, fontFamily: "'JetBrains Mono',monospace", fontSize: 'var(--text-body)', color: 'var(--gold)', fontWeight: 700 }}>{inviteResult.tempPw}</p>
             </div>
+            <p style={{ fontSize: 'var(--text-micro)', color: 'var(--info)', marginBottom: '0.75rem' }}>
+              📧 A confirmation email was just sent to {inviteResult.email}. They must click it before this password will work — otherwise sign-in will fail with "email not confirmed."
+            </p>
             <p style={{ fontSize: 'var(--text-micro)', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
               The user should change this password after first login via Profile → Security.
             </p>
@@ -789,6 +793,11 @@ function EnterpriseAddonsTab({ profile, tenant }: any) {
                   </div>
                 </div>
                 <p style={{ margin: 0, fontSize: 'var(--text-small)', color: 'var(--text-muted)', lineHeight: 1.5, flex: 1 }}>{addon.desc}</p>
+                {isOn && (
+                  <p style={{ margin: 0, fontSize: 'var(--text-micro)', color: 'var(--info)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    🔧 Provisioning — our team will reach out to complete setup before this goes live.
+                  </p>
+                )}
                 <button
                   onClick={() => toggle(addon.key, addon.price)}
                   disabled={isLoading}

@@ -8,6 +8,8 @@ import NoticesTray from './components/notices/NoticesTray'
 import { OfflineBanner, UpdatePrompt, InstallPrompt } from './components/AppPrompts'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import PlanSelectPage from './pages/PlanSelectPage'
 import SubdomainPage from './pages/SubdomainPage'
 import { ToastProvider } from './components/ui/Toast'
@@ -30,7 +32,7 @@ const FinancePage      = lazy(() => import('./pages/FinancePage'))
 const NoticesPage      = lazy(() => import('./pages/NoticesPage'))
 
 // Pages that need body scroll enabled (standalone full-page layouts, not the app shell)
-const PUBLIC_PATHS = ['/', '/login', '/register', '/demo', '/tos', '/privacy', '/onboarding/plan', '/onboarding/subdomain']
+const PUBLIC_PATHS = ['/', '/login', '/register', '/forgot-password', '/reset-password', '/demo', '/tos', '/privacy', '/onboarding/plan', '/onboarding/subdomain']
 
 const Spin = () => (
   <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg-900)' }}>
@@ -81,6 +83,11 @@ function AppRoutes() {
         <Route path="/"         element={<MarketingPage />} />
         <Route path="/login"    element={session ? <Navigate to={postAuthDest} replace /> : <LoginPage />} />
         <Route path="/register" element={session ? <Navigate to={postAuthDest} replace /> : <RegisterPage />} />
+        <Route path="/forgot-password" element={session ? <Navigate to={postAuthDest} replace /> : <ForgotPasswordPage />} />
+        {/* No session redirect here: the recovery link itself establishes a
+            temporary session, which would otherwise bounce the user straight
+            to their dashboard before they can set a new password. */}
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/demo"     element={<DemoPage />} />
         <Route path="/tos"      element={<ToSPage />} />
         <Route path="/privacy"  element={<PrivacyPage />} />
@@ -97,8 +104,8 @@ function AppRoutes() {
         <Route path="/hr"         element={<ProtectedRoute><HRPage /></ProtectedRoute>} />
         <Route path="/oversight"  element={<Navigate to="/group#oversight" replace />} />
         <Route path="/notices"    element={<ProtectedRoute><Suspense fallback={<Spin/>}><NoticesPage /></Suspense></ProtectedRoute>} />
-        <Route path="/finance"    element={<Navigate to="/requests" replace />} />
-        <Route path="/accounting" element={<Navigate to="/requests" replace />} />
+        <Route path="/finance"    element={<ProtectedRoute><Suspense fallback={<Spin/>}><FinancePage /></Suspense></ProtectedRoute>} />
+        <Route path="/accounting" element={<Navigate to="/finance" replace />} />
         <Route path="/analytics"  element={<Navigate to="/dashboard" replace />} />
         <Route path="/group"      element={<ProtectedRoute><GroupPage /></ProtectedRoute>} />
         <Route path="/hierarchy"  element={<Navigate to="/group#hierarchy" replace />} />

@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import {
   LayoutDashboard, FileText, Users, ClipboardList,
-  Warehouse, Menu, X, Shield, Settings, Building2,
+  Warehouse, Menu, X, Shield, Settings, Building2, DollarSign,
 } from 'lucide-react'
 
 interface NavItem { icon: React.ReactNode; label: string; path: string; badge?: number }
@@ -17,9 +17,10 @@ export default function Sidebar() {
   const [unreadCount, setUnreadCount] = useState(0)
 
   const level = post?.hierarchy_levels
-  const isExec    = level && level.rank <= 1
-  const isManager = level && level.rank <= 2
-  const isITAdmin = level?.is_it_admin || isExec
+  const isExec       = level && level.rank <= 1
+  const isManager    = level && level.rank <= 2
+  const isITAdmin    = level?.is_it_admin || isExec
+  const isAccounting = level?.can_see_budgets || level?.is_accounting || isExec
 
   useEffect(() => {
     if (!profile) return
@@ -40,6 +41,7 @@ export default function Sidebar() {
     { icon: <Users           size={16} />, label: 'People',           path: '/hr' },
     { icon: <ClipboardList   size={16} />, label: 'Tasks & Targets',  path: '/work' },
     { icon: <Warehouse       size={16} />, label: 'Company Property', path: '/inventory' },
+    ...(isAccounting ? [{ icon: <DollarSign size={16} />, label: 'Finance', path: '/finance' }] : []),
     ...(isManager ? [{ icon: <Building2 size={16} />, label: 'Group', path: '/group' }] : []),
     ...(isITAdmin ? [{ icon: <Shield    size={16} />, label: 'Admin', path: '/admin' }] : []),
   ]

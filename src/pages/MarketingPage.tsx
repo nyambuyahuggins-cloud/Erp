@@ -262,9 +262,6 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 function AddonConfigurator({ navigate }: { navigate: ReturnType<typeof useNavigate> }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const toggle = (key: string) => setSelected(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
-  const addonsTotal = ADDON_CATALOG.filter(a => selected.has(a.key)).reduce((s, a) => s + a.price, 0)
-  const monthly = 399 + addonsTotal
-  const annual  = monthly * 10
 
   return (
     <div>
@@ -280,9 +277,6 @@ function AddonConfigurator({ navigate }: { navigate: ReturnType<typeof useNaviga
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--sp-2)', alignItems: 'flex-start' }}>
                   <span style={{ fontWeight: 600, fontSize: 'var(--text-small)', color: 'var(--text-primary)' }}>{addon.label}</span>
-                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, fontSize: 'var(--text-small)', color: 'var(--gold)', flexShrink: 0 }}>
-                    ${addon.price}<span style={{ fontWeight: 400, fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>{addon.unit}</span>
-                  </span>
                 </div>
                 <p style={{ margin: 'var(--sp-1) 0 0', fontSize: 'var(--text-micro)', color: 'var(--text-muted)', lineHeight: 1.5 }}>{addon.desc}</p>
               </div>
@@ -292,14 +286,11 @@ function AddonConfigurator({ navigate }: { navigate: ReturnType<typeof useNaviga
       </div>
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--sp-4)', borderColor: 'var(--border-gold)', background: 'var(--gold-dim)' }}>
         <div>
-          <p style={{ margin: '0 0 var(--sp-1)', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>Your Enterprise plan total</p>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 'var(--text-h2)', fontWeight: 700, color: 'var(--gold)' }}>${monthly.toLocaleString()}</span>
-            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>/mo</span>
-            {addonsTotal > 0 && <span style={{ fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>= $399 base + ${addonsTotal} add-ons</span>}
-          </div>
-          <p style={{ margin: 'var(--sp-1) 0 0', fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>
-            Annual: <strong style={{ color: 'var(--text-primary)' }}>${annual.toLocaleString()}/yr</strong> — saves ${(monthly * 2).toLocaleString()}
+          <p style={{ margin: '0 0 var(--sp-1)', fontSize: 'var(--text-small)', color: 'var(--text-primary)', fontWeight: 600 }}>
+            {selected.size > 0 ? `${selected.size} add-on${selected.size > 1 ? 's' : ''} selected` : 'Enterprise base plan'}
+          </p>
+          <p style={{ margin: 0, fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>
+            Exact pricing for your selection is shown at sign-up — first month free either way.
           </p>
         </div>
         <button className="btn-gold" style={{ fontSize: 'var(--text-body)', padding: '0.875rem 1.75rem' }} onClick={() => navigate('/demo?tier=enterprise')}>

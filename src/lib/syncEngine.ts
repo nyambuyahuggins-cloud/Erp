@@ -22,6 +22,12 @@ export const syncEngine = {
     return () => listeners.delete(fn)
   },
 
+  // Public entry point for other modules (e.g. offlineWrite.ts) to push a
+  // status/count update to every subscriber — e.g. the header sync badge.
+  notify(status: SyncStatus, count: number) {
+    notify(status, count)
+  },
+
   async getPendingCount(): Promise<number> {
     return offlineQueue.count()
   },

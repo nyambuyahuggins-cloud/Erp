@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import {
   Sun, Moon, User, Lock, Eye,
-  Shield, Upload, Plus, Trash2, CheckCircle, X
+  Shield, Upload, Plus, Trash2, CheckCircle, X, Fingerprint
 } from 'lucide-react'
 import { getPlanLimits } from '../lib/planEnforcement'
 import type { Plan } from '../lib/planEnforcement'
@@ -41,7 +41,7 @@ export default function SettingsPage() {
 
       <div style={{ maxWidth: 620, margin: '0 auto' }}>
         {tab === 'Notifications' && <NotificationsTab profile={profile} />}
-        {tab === 'Display'       && <DisplayTab theme={theme} toggleTheme={toggleTheme} />}
+        {tab === 'Display'       && <DisplayTab theme={theme} toggleTheme={toggleTheme} post={post} />}
         {tab === 'Security'      && <SecurityTab profile={profile} />}
       </div>
     </Layout>
@@ -134,7 +134,8 @@ function NotificationsTab({ profile }: any) {
 }
 
 /* ── DISPLAY TAB ──────────────────────────────────────────────────── */
-function DisplayTab({ theme, toggleTheme }: any) {
+function DisplayTab({ theme, toggleTheme, post }: any) {
+  const level = post?.hierarchy_levels
   const [density, setDensity] = useState<'comfortable' | 'compact'>(() => (localStorage.getItem('vela-density') as any) || 'comfortable')
   const [defaultPage, setDefaultPage] = useState(() => localStorage.getItem('vela-default-page') || '/dashboard')
 
@@ -180,7 +181,7 @@ function DisplayTab({ theme, toggleTheme }: any) {
       <div className="card">
         <h3 style={{ margin: '0 0 1rem', fontSize: 'var(--text-small)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Default Landing Page</h3>
         <select className="input" style={{ maxWidth: 280 }} value={defaultPage} onChange={e => saveDefaultPage(e.target.value)}>
-          {['/dashboard', '/requests', '/hr', '/work', '/inventory', '/notices'].map(p => (
+          {['/dashboard', '/requests', '/hr', '/work', '/inventory', '/notices', ...(level?.can_see_budgets || level?.is_accounting || (level && level.rank <= 1) ? ['/finance'] : [])].map(p => (
             <option key={p} value={p}>{p.replace('/', '').replace('-', ' ') || 'dashboard'}</option>
           ))}
         </select>
@@ -207,6 +208,11 @@ function ProfileTab({ profile, post, tenant, refreshProfile }: any) {
   async function loadSessions() {
     const { data } = await supabase.from('user_sessions').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(5)
     setSessions(data || [])
+  }
+
+  async function revokeSession(id: string) {
+    await supabase.from('user_sessions').update({ invalidated_at: new Date().toISOString(), invalidated_reason: 'manual' }).eq('id', id)
+    loadSessions()
   }
 
   async function saveProfile(e: React.FormEvent) {
@@ -273,15 +279,22 @@ function ProfileTab({ profile, post, tenant, refreshProfile }: any) {
       {sessions.length > 0 && (
         <div className="card">
           <h3 style={{ margin: '0 0 1rem', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Active Sessions</h3>
+          <p style={{ margin: '0 0 0.75rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>VELA keeps up to 2 active sessions per account — signing in on a third device signs the oldest one out.</p>
           {sessions.map(s => (
-            <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'var(--bg-900)', borderRadius: 8, marginBottom: 4 }}>
+            <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--bg-900)', borderRadius: 8, marginBottom: 4 }}>
               <div>
                 <p style={{ margin: 0, fontSize: 'var(--text-small)' }}>{s.device_type || 'Unknown'} · {s.browser || 'Browser'}</p>
                 <p style={{ margin: '2px 0 0', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>{s.created_at ? new Date(s.created_at).toLocaleDateString() : ''}</p>
               </div>
-              <span className={`badge ${s.invalidated_at ? 'badge-draft' : 'badge-active'}`} style={{ fontSize: 'var(--text-micro)' }}>
-                {s.invalidated_at ? 'Ended' : 'Active'}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className={`badge ${s.invalidated_at ? 'badge-draft' : 'badge-active'}`} style={{ fontSize: 'var(--text-micro)' }}>
+                  {s.invalidated_at ? 'Ended' : 'Active'}
+                </span>
+                {!s.invalidated_at && (
+                  <button className="btn-ghost" style={{ padding: '0.2rem 0.5rem', fontSize: 'var(--text-micro)', color: 'var(--danger)' }}
+                    onClick={() => revokeSession(s.id)}>Sign out</button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -608,13 +621,38 @@ function APITab({ profile, tenant }: any) {
 /* ── Security Tab ─────────────────────────────────────────────────── */
 function SecurityTab({ profile }: any) {
   const [loginAttempts, setLoginAttempts] = useState<any[]>([])
+  const [passkeys, setPasskeys] = useState<any[]>([])
+  const [pkLoading, setPkLoading] = useState(false)
+  const [pkError, setPkError] = useState('')
+  const [pkSupported, setPkSupported] = useState(true)
 
   useEffect(() => {
     if (!profile) return
     supabase.from('login_attempts').select('*').eq('email', profile.email || '')
       .order('attempted_at', { ascending: false }).limit(10)
       .then(({ data }) => setLoginAttempts(data || []))
+    setPkSupported(typeof window !== 'undefined' && !!window.PublicKeyCredential)
+    loadPasskeys()
   }, [profile])
+
+  async function loadPasskeys() {
+    const { data, error } = await supabase.auth.passkey.list()
+    if (!error) setPasskeys(data || [])
+  }
+
+  async function addPasskey() {
+    setPkError('')
+    setPkLoading(true)
+    const { error } = await supabase.auth.registerPasskey()
+    setPkLoading(false)
+    if (error) { setPkError(error.message); return }
+    loadPasskeys()
+  }
+
+  async function removePasskey(passkeyId: string) {
+    await supabase.auth.passkey.delete({ passkeyId })
+    loadPasskeys()
+  }
 
   return (
     <div style={{ maxWidth: 560, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -636,12 +674,47 @@ function SecurityTab({ profile }: any) {
       </div>
 
       <div className="card">
-        <h3 style={{ margin: '0 0 0.75rem', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Two-Factor Authentication</h3>
-        <p style={{ fontSize: 'var(--text-small)', color: 'var(--text-muted)', marginBottom: '1rem' }}>TOTP authenticator app support. SMS 2FA is provisioned — provider connection coming soon.</p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.75rem', background: 'var(--bg-900)', borderRadius: 8 }}>
-          <Lock size={14} style={{ color: 'var(--text-muted)' }} />
-          <span style={{ fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>2FA setup coming in next release</span>
-        </div>
+        <h3 style={{ margin: '0 0 0.5rem', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Passkeys</h3>
+        <p style={{ fontSize: 'var(--text-small)', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+          Sign in with Face ID, Touch ID, Windows Hello, or a security key — no password needed. Replaces the need for a separate 2FA code.
+        </p>
+
+        {!pkSupported && (
+          <div style={{ background: 'var(--warning-dim)', border: '1px solid var(--warning-dim)', borderRadius: 8, padding: '0.75rem', marginBottom: '1rem', fontSize: 'var(--text-small)', color: 'var(--warning)' }}>
+            This browser or device doesn't support passkeys. Try a recent version of Chrome, Safari, or Edge.
+          </div>
+        )}
+        {pkError && (
+          <div style={{ background: 'var(--danger-dim)', border: '1px solid var(--danger-dim)', borderRadius: 8, padding: '0.75rem', marginBottom: '1rem', fontSize: 'var(--text-small)', color: 'var(--danger)' }}>
+            {pkError}
+          </div>
+        )}
+
+        {passkeys.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: '1rem' }}>
+            {passkeys.map(pk => (
+              <div key={pk.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--bg-900)', borderRadius: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Fingerprint size={14} style={{ color: 'var(--gold)' }} />
+                  <div>
+                    <p style={{ margin: 0, fontSize: 'var(--text-small)' }}>{pk.friendly_name || 'Passkey'}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>
+                      Added {new Date(pk.created_at).toLocaleDateString()}{pk.last_used_at ? ` · last used ${new Date(pk.last_used_at).toLocaleDateString()}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <button className="btn-ghost" style={{ padding: '0.2rem 0.5rem', fontSize: 'var(--text-micro)', color: 'var(--danger)' }}
+                  onClick={() => removePasskey(pk.id)}>Remove</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button className="btn-gold" disabled={!pkSupported || pkLoading} onClick={addPasskey}
+          style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Fingerprint size={14} />
+          {pkLoading ? 'Follow the prompt…' : 'Add a passkey'}
+        </button>
       </div>
     </div>
   )

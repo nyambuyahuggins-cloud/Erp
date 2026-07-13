@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { Shield, Eye, EyeOff } from 'lucide-react'
+import { Shield, Eye, EyeOff, Fingerprint } from 'lucide-react'
 import { detectSubdomain, getTenantBySubdomain } from '../lib/subdomain'
 
 export default function LoginPage() {
@@ -10,8 +10,26 @@ export default function LoginPage() {
   const [showPw, setShowPw]       = useState(false)
   const [error, setError]         = useState('')
   const [loading, setLoading]     = useState(false)
-  const { signIn, tenant } = useAuth()
+  const [pkLoading, setPkLoading] = useState(false)
+  const [pkSupported, setPkSupported] = useState(false)
+  const { signIn, signInWithPasskey, tenant } = useAuth()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    setPkSupported(typeof window !== 'undefined' && !!window.PublicKeyCredential)
+  }, [])
+
+  const handlePasskeySignIn = async () => {
+    setError('')
+    setPkLoading(true)
+    const { error: err } = await signInWithPasskey()
+    setPkLoading(false)
+    if (err) {
+      setError('Passkey sign-in failed or was cancelled.')
+    } else {
+      navigate('/dashboard')
+    }
+  }
 
   // Subdomain-aware branding
   const [subdomainInfo, setSubdomainInfo] = useState<{
@@ -93,12 +111,32 @@ export default function LoginPage() {
 
           {error && (
             <div style={{
-              background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+              background: 'var(--danger-dim)', border: '1px solid var(--danger-dim)',
               borderRadius: 8, padding: '0.75rem', marginBottom: '1rem',
               fontSize: 'var(--text-small)', color: 'var(--danger)'
             }}>
               {error}
             </div>
+          )}
+
+          {pkSupported && (
+            <>
+              <button type="button" onClick={handlePasskeySignIn} disabled={pkLoading}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  background: 'var(--gold-dim)', border: '1px solid var(--border-gold)', borderRadius: 12,
+                  padding: '0.75rem', color: 'var(--gold)', fontWeight: 600, fontSize: 'var(--text-small)',
+                  cursor: 'pointer', marginBottom: '1rem',
+                }}>
+                <Fingerprint size={16} />
+                {pkLoading ? 'Follow the prompt…' : 'Sign in with a passkey'}
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '0 0 1rem', color: 'var(--text-muted)', fontSize: 'var(--text-micro)' }}>
+                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                or sign in with a password
+                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              </div>
+            </>
           )}
 
           <form onSubmit={handleSubmit}>
@@ -151,6 +189,10 @@ export default function LoginPage() {
             <a href="/forgot-password" style={{ fontSize: 'var(--text-small)', color: 'var(--gold)', textDecoration: 'none' }}>
               Forgot password?
             </a>
+          </div>
+          <div style={{ marginTop: '0.75rem', textAlign: 'center', fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>
+            Don't have an account?{' '}
+            <a href="/register" style={{ color: 'var(--gold)', textDecoration: 'none' }}>Sign up</a>
           </div>
         </div>
       </div>

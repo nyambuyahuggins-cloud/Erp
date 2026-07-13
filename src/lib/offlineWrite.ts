@@ -10,10 +10,9 @@ export async function dbWrite(
   eq?: [string, string]
 ): Promise<{ data: any; error: any; queued: boolean }> {
   if (!navigator.onLine) {
-    const id = await offlineQueue.enqueue({ table, operation, payload, eq })
+    await offlineQueue.enqueue({ table, operation, payload, eq })
     const count = await offlineQueue.count()
-    // Notify sync engine listeners
-    ;(syncEngine as any)['_notifyCount']?.(count)
+    syncEngine.notify('offline', count)
     return { data: null, error: null, queued: true }
   }
 
@@ -29,8 +28,13 @@ export async function dbWrite(
     if (result?.error) throw result.error
     return { data: result?.data, error: null, queued: false }
   } catch (e: any) {
-    // If online write fails, queue for retry
+    // navigator.onLine reported true, but the write still failed — this is
+    // the common case on flaky 4G (signal present, requests time out).
+    // Queue it for retry and make sure the badge actually reflects that,
+    // instead of the write silently vanishing with no visible feedback.
     await offlineQueue.enqueue({ table, operation, payload, eq })
+    const count = await offlineQueue.count()
+    syncEngine.notify('offline', count)
     return { data: null, error: e, queued: true }
   }
 }

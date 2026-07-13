@@ -13,6 +13,7 @@ import SearchInput from '../components/ui/SearchInput'
 import { SkeletonTable } from '../components/ui/Skeleton'
 import { Plus, X, AlertCircle, Clock, Search, Filter, Download } from 'lucide-react'
 import TabBar from '../components/TabBar'
+import { computeRouting, canUserAct, ApprovalRule } from '../lib/approvalRouting'
 
 const CATEGORIES = [
   'Petty Cash',
@@ -23,8 +24,11 @@ const CATEGORIES = [
 ]
 
 export default function RequestsPage() {
-  const { profile, post, activeEntityId } = useAuth()
+  const { profile, post, activeEntityId, tenant } = useAuth()
   const [requests, setRequests] = useState<any[]>([])
+  const [rules, setRules] = useState<ApprovalRule[]>([])
+  const [levels, setLevels] = useState<any[]>([])
+  const [delegatedLevels, setDelegatedLevels] = useState<{ rank: number; can_approve: boolean; can_endorse: boolean }[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -42,9 +46,20 @@ export default function RequestsPage() {
 
   const level = post?.hierarchy_levels
   const canApprove = level?.can_approve
+  const canEndorse = level?.can_endorse
+  const userRank: number | null = level?.rank ?? null
+  // Effective permissions include any active acting_authority delegations —
+  // e.g. a Staff member covering for a Department Manager on leave gains
+  // that manager's approval rank/authority for the duration.
+  const effectiveRank = delegatedLevels.length > 0
+    ? Math.min(userRank ?? Infinity, ...delegatedLevels.map(d => d.rank))
+    : userRank
+  const effectiveCanApprove = canApprove || delegatedLevels.some(d => d.can_approve)
+  const effectiveCanEndorse = canEndorse || delegatedLevels.some(d => d.can_endorse)
+  const pettyCashLimit = tenant?.petty_cash_limit ?? 15
+  const dualApprovalThreshold = tenant?.dual_approval_threshold ?? 999
   const { toast } = useToast()
   useEscapeKey(() => { setShowModal(false); setActionModal(null); setReceiptModal(null) })
-  const canEndorse = level?.can_endorse
   const entityId = activeEntityId || profile?.entity_id
 
   useEffect(() => { if (profile) load() }, [profile, activeEntityId])
@@ -69,6 +84,26 @@ export default function RequestsPage() {
     // Cache for offline
     const { offlineQueue } = await import('../lib/offlineQueue')
     offlineQueue.cacheSet(cacheKey, rows).catch(() => {})
+
+    // Approval routing inputs — rules configured in Admin, and rank levels
+    // for gating who can act on a given request.
+    const today = new Date().toISOString().split('T')[0]
+    const [{ data: ruleData }, { data: levelData }, { data: delegationData }] = await Promise.all([
+      supabase.from('approval_rules').select('*').eq('tenant_id', profile!.tenant_id).eq('is_active', true),
+      supabase.from('hierarchy_levels').select('rank,name').eq('tenant_id', profile!.tenant_id),
+      supabase.from('acting_authority')
+        .select('*, absent:user_profiles!absent_user_id(posts!post_id(hierarchy_levels!level_id(rank,can_approve,can_endorse)))')
+        .eq('tenant_id', profile!.tenant_id).eq('acting_user_id', profile!.id).eq('is_active', true)
+        .lte('start_date', today).gte('end_date', today),
+    ])
+    setRules(ruleData || [])
+    setLevels(levelData || [])
+    setDelegatedLevels(
+      (delegationData || [])
+        .map((d: any) => d.absent?.posts?.hierarchy_levels)
+        .filter(Boolean)
+    )
+
     setLoading(false)
   }
 
@@ -97,8 +132,10 @@ export default function RequestsPage() {
     if (!entityId) { alert('No entity assigned to your profile. Contact your administrator.'); return }
     setSubmitting(true)
     const amt = parseFloat(form.amount)
-    const isPettyCash = amt < 15
-    const isDual = amt > 999
+    const routing = computeRouting({
+      amount: amt, category: form.category, recurring: form.recurring, entityId,
+      pettyCashLimit, dualApprovalThreshold, rules,
+    })
     const ref = `FR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,5).toUpperCase()}`
 
     // Upload attachment if provided
@@ -132,7 +169,8 @@ export default function RequestsPage() {
       amount: amt, category: form.category,
       description: form.description, justification: form.justification,
       recurring: form.recurring,
-      is_petty_cash: isPettyCash, is_dual_approval: isDual,
+      is_petty_cash: routing.isPettyCash, is_dual_approval: routing.isDualApproval,
+      is_inter_entity: routing.isInterEntity,
       status: 'pending',
       ...(attachments.length > 0 ? { attachments } : {})
     }
@@ -162,18 +200,25 @@ export default function RequestsPage() {
     setActionLoading(true)
     const r = actionModal
 
-    const existingApprovals = r.request_approvals?.filter((a: any) => a.action === 'approved') || []
-    const isDual = r.is_dual_approval
-    const hasAlreadyApproved = existingApprovals.some((a: any) => a.approver_id === profile!.id)
+    const existingApprovals = r.request_approvals || []
+    const routing = computeRouting({
+      amount: parseFloat(r.amount), category: r.category, recurring: r.recurring, entityId: r.entity_id,
+      pettyCashLimit, dualApprovalThreshold, rules,
+    })
+    const { canApprove: mayApprove, reason } = canUserAct({
+      routing, userId: profile!.id, userRank: effectiveRank, userCanApprove: !!effectiveCanApprove, userCanEndorse: !!effectiveCanEndorse,
+      existingApprovals,
+    })
 
-    if (hasAlreadyApproved && action === 'approved') {
-      toast('error', 'Already approved', 'You have already approved this request.')
+    if (action === 'approved' && !mayApprove) {
+      toast('error', 'Cannot approve', reason || 'You are not authorized to approve this request.')
       setActionLoading(false)
       return
     }
 
-    const newApprovalCount = existingApprovals.length + (action === 'approved' ? 1 : 0)
-    const fullyApproved = action === 'approved' && (!isDual || newApprovalCount >= 2)
+    const approvedCount = existingApprovals.filter((a: any) => a.action === 'approved').length
+    const newApprovalCount = approvedCount + (action === 'approved' ? 1 : 0)
+    const fullyApproved = action === 'approved' && newApprovalCount >= routing.requiredApproversCount
 
     const before = { status: r.status }
     const newStatus = action === 'endorsed' ? 'endorsed'
@@ -212,7 +257,7 @@ export default function RequestsPage() {
     setActionLoading(false)
 
     const toastMsg: Record<string, [string, string]> = {
-      approved: ['Request approved', isDual && !fullyApproved ? 'Waiting for second approver.' : `${r.ref} has been approved.`],
+      approved: ['Request approved', routing.isDualApproval && !fullyApproved ? `Waiting for approver ${newApprovalCount}/${routing.requiredApproversCount}.` : `${r.ref} has been approved.`],
       rejected: ['Request rejected', `${r.ref} has been rejected.`],
       endorsed: ['Request endorsed', `${r.ref} has been endorsed.`],
     }
@@ -261,11 +306,17 @@ export default function RequestsPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span className={`badge ${map[r.status] || 'badge-draft'}`}>{r.status}</span>
         {r.is_stale && <span title="Stale — 14+ days"><AlertCircle size={12} style={{ color: '#f97316' }} /></span>}
-        {r.is_dual_approval && r.status === 'pending' && (
-          <span style={{ fontSize: 'var(--text-micro)', color: 'var(--info)' }} title="Dual approval required">
-            {r.request_approvals?.filter((a: any) => a.action === 'approved').length || 0}/2
-          </span>
-        )}
+        {r.is_dual_approval && r.status === 'pending' && (() => {
+          const routing = computeRouting({
+            amount: parseFloat(r.amount), category: r.category, recurring: r.recurring, entityId: r.entity_id,
+            pettyCashLimit, dualApprovalThreshold, rules,
+          })
+          return (
+            <span style={{ fontSize: 'var(--text-micro)', color: 'var(--info)' }} title="Dual approval required">
+              {r.request_approvals?.filter((a: any) => a.action === 'approved').length || 0}/{routing.requiredApproversCount}
+            </span>
+          )
+        })()}
       </div>
     )
   }
@@ -395,9 +446,19 @@ export default function RequestsPage() {
                     <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{new Date(r.created_at).toLocaleDateString()}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        {['pending','endorsed'].includes(r.status) && (canApprove || canEndorse) && r.requester_id !== profile?.id && (
-                          <button className="btn-ghost" style={{ padding: '0.3rem 0.7rem', fontSize: 'var(--text-micro)' }} onClick={() => setActionModal(r)}>Review</button>
-                        )}
+                        {['pending','endorsed'].includes(r.status) && r.requester_id !== profile?.id && (() => {
+                          const routing = computeRouting({
+                            amount: parseFloat(r.amount), category: r.category, recurring: r.recurring, entityId: r.entity_id,
+                            pettyCashLimit, dualApprovalThreshold, rules,
+                          })
+                          const { canApprove: mayApprove, canEndorse: mayEndorse } = canUserAct({
+                            routing, userId: profile!.id, userRank: effectiveRank, userCanApprove: !!effectiveCanApprove, userCanEndorse: !!effectiveCanEndorse,
+                            existingApprovals: r.request_approvals || [],
+                          })
+                          return (mayApprove || mayEndorse) && (
+                            <button className="btn-ghost" style={{ padding: '0.3rem 0.7rem', fontSize: 'var(--text-micro)' }} onClick={() => setActionModal(r)}>Review</button>
+                          )
+                        })()}
                         {r.receipt_status === 'pending' && r.requester_id === profile?.id && (
                           <button className="btn-ghost" style={{ padding: '0.3rem 0.7rem', fontSize: 'var(--text-micro)', color: 'var(--gold)', borderColor: 'var(--gold-strong)' }}
                             onClick={() => { setReceiptModal(r); setReceiptFile(null) }}>
@@ -481,13 +542,33 @@ export default function RequestsPage() {
                 )}
               </div>
 
-              {form.amount && (
-                <div style={{ background: 'var(--gold-dim)', border: '1px solid var(--border)', borderRadius: 8, padding: '0.75rem', marginBottom: '1rem', fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>
-                  {parseFloat(form.amount) < 15 ? '⚡ Petty cash — direct dept. manager approval'
-                    : parseFloat(form.amount) > 999 ? '🔒 Dual approval required (2 approvers)'
-                    : '✓ Standard approval flow'}
-                </div>
-              )}
+              {form.amount && form.category && (() => {
+                const preview = computeRouting({
+                  amount: parseFloat(form.amount) || 0, category: form.category, recurring: form.recurring, entityId,
+                  pettyCashLimit, dualApprovalThreshold, rules,
+                })
+                const requiredLevelName = preview.requiredRank != null
+                  ? levels.find(l => l.rank === preview.requiredRank)?.name || `Rank ${preview.requiredRank}`
+                  : null
+                return (
+                  <div style={{ background: 'var(--gold-dim)', border: '1px solid var(--border)', borderRadius: 8, padding: '0.75rem', marginBottom: '1rem', fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>
+                    {preview.isInterEntity
+                      ? `🏛️ Inter-entity transfer — requires ${requiredLevelName || 'Executive'} approval only`
+                      : preview.isPettyCash
+                        ? `⚡ Petty cash — direct dept. manager approval (below $${pettyCashLimit.toFixed(2)})`
+                        : preview.isDualApproval
+                          ? `🔒 Dual approval required (${preview.requiredApproversCount} approvers${requiredLevelName ? `, ${requiredLevelName}+` : ''})`
+                          : requiredLevelName
+                            ? `🔒 Requires ${requiredLevelName} approval or higher`
+                            : '✓ Standard approval flow'}
+                    {preview.matchedRules.length > 0 && (
+                      <span style={{ display: 'block', marginTop: '0.3rem', fontSize: 'var(--text-micro)' }}>
+                        Matched rule: {preview.matchedRules[0].rule_name}
+                      </span>
+                    )}
+                  </div>
+                )
+              })()}
               <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
                 <button type="button" className="btn-ghost" onClick={() => { setShowModal(false); setAttachFile(null) }}>Cancel</button>
                 <button type="submit" className="btn-gold" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit'}</button>
@@ -508,11 +589,29 @@ export default function RequestsPage() {
               <p style={{ margin: '0 0 0.25rem', fontWeight: 600 }}>{actionModal.ref}</p>
               <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>USD {parseFloat(actionModal.amount).toFixed(2)} · {actionModal.category}</p>
               <p style={{ margin: '0.5rem 0 0', fontSize: 'var(--text-small)' }}>{actionModal.description}</p>
-              {actionModal.is_dual_approval && (
-                <p style={{ margin: '0.5rem 0 0', fontSize: 'var(--text-micro)', color: 'var(--info)' }}>
-                  Dual approval: {actionModal.request_approvals?.filter((a: any) => a.action === 'approved').length || 0}/2 approvals received
-                </p>
-              )}
+              {(() => {
+                const routing = computeRouting({
+                  amount: parseFloat(actionModal.amount), category: actionModal.category, recurring: actionModal.recurring, entityId: actionModal.entity_id,
+                  pettyCashLimit, dualApprovalThreshold, rules,
+                })
+                const requiredLevelName = routing.requiredRank != null
+                  ? levels.find(l => l.rank === routing.requiredRank)?.name || `Rank ${routing.requiredRank}`
+                  : null
+                return (
+                  <>
+                    {routing.isDualApproval && (
+                      <p style={{ margin: '0.5rem 0 0', fontSize: 'var(--text-micro)', color: 'var(--info)' }}>
+                        Dual approval: {actionModal.request_approvals?.filter((a: any) => a.action === 'approved').length || 0}/{routing.requiredApproversCount} approvals received
+                      </p>
+                    )}
+                    {requiredLevelName && (
+                      <p style={{ margin: '0.5rem 0 0', fontSize: 'var(--text-micro)', color: 'var(--gold)' }}>
+                        Requires {requiredLevelName} approval or higher
+                      </p>
+                    )}
+                  </>
+                )
+              })()}
               {/* Attachments */}
               {Array.isArray(actionModal.attachments) && actionModal.attachments.length > 0 && (
                 <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
@@ -535,15 +634,31 @@ export default function RequestsPage() {
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button className="btn-ghost" onClick={() => setActionModal(null)}>Cancel</button>
-              {canEndorse && actionModal.status === 'pending' && (
-                <button className="btn-ghost" style={{ borderColor: 'var(--info)', color: 'var(--info)' }} onClick={() => handleAction('endorsed')} disabled={actionLoading}>Endorse</button>
-              )}
-              {canApprove && (
-                <>
-                  <button style={{ background: 'var(--danger-dim)', color: 'var(--danger)', border: '1px solid var(--danger-dim)', borderRadius: 8, padding: '0.625rem 1rem', cursor: 'pointer', fontSize: 'var(--text-small)' }} onClick={() => handleAction('rejected')} disabled={actionLoading}>Reject</button>
-                  <button className="btn-gold" onClick={() => handleAction('approved')} disabled={actionLoading}>Approve</button>
-                </>
-              )}
+              {(() => {
+                const routing = computeRouting({
+                  amount: parseFloat(actionModal.amount), category: actionModal.category, recurring: actionModal.recurring, entityId: actionModal.entity_id,
+                  pettyCashLimit, dualApprovalThreshold, rules,
+                })
+                const { canApprove: mayApprove, canEndorse: mayEndorse, reason } = canUserAct({
+                  routing, userId: profile!.id, userRank: effectiveRank, userCanApprove: !!effectiveCanApprove, userCanEndorse: !!effectiveCanEndorse,
+                  existingApprovals: actionModal.request_approvals || [],
+                })
+                return (
+                  <>
+                    {mayEndorse && actionModal.status === 'pending' && (
+                      <button className="btn-ghost" style={{ borderColor: 'var(--info)', color: 'var(--info)' }} onClick={() => handleAction('endorsed')} disabled={actionLoading}>Endorse</button>
+                    )}
+                    {mayApprove ? (
+                      <>
+                        <button style={{ background: 'var(--danger-dim)', color: 'var(--danger)', border: '1px solid var(--danger-dim)', borderRadius: 8, padding: '0.625rem 1rem', cursor: 'pointer', fontSize: 'var(--text-small)' }} onClick={() => handleAction('rejected')} disabled={actionLoading}>Reject</button>
+                        <button className="btn-gold" onClick={() => handleAction('approved')} disabled={actionLoading}>Approve</button>
+                      </>
+                    ) : reason ? (
+                      <p style={{ margin: 0, fontSize: 'var(--text-micro)', color: 'var(--text-muted)', alignSelf: 'center' }}>{reason}</p>
+                    ) : null}
+                  </>
+                )
+              })()}
             </div>
           </div>
           </FocusTrap>
