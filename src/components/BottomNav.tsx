@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
   LayoutDashboard, FileText, Users, ClipboardList,
-  Warehouse, Building2, Shield, Settings, User, DollarSign,
+  Building2, Shield, Settings, User, DollarSign,
   MoreHorizontal, X,
 } from 'lucide-react'
 
@@ -28,7 +28,6 @@ export default function BottomNav() {
   if (!profile) return null
 
   const SECONDARY = [
-    { icon: <Warehouse  size={18} />, label: 'Company Property', path: '/inventory' },
     ...(isAccounting ? [{ icon: <DollarSign size={18} />, label: 'Finance', path: '/finance' }] : []),
     ...(isManager  ? [{ icon: <Building2 size={18} />, label: 'Group',    path: '/group'    }] : []),
     ...(isITAdmin  ? [{ icon: <Shield    size={18} />, label: 'Admin',    path: '/admin'    }] : []),

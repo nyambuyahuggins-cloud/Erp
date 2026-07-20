@@ -28,14 +28,13 @@ const STATS = [
 const HOW_IT_WORKS = [
   { icon: <UserPlus  size={20} />, step: '01', title: 'Create your account',       body: 'Sign up in under 2 minutes. No credit card required for Starter. Your group workspace is created instantly.' },
   { icon: <Settings2 size={20} />, step: '02', title: 'Set up your group',         body: 'Add your companies, branches, and staff. Set approval levels and assign roles. Takes about 15 minutes.' },
-  { icon: <Rocket    size={20} />, step: '03', title: 'Your team goes live',       body: 'Share the VELA link with your staff. They add it to their home screen and start submitting requests, clocking in, and managing assets.' },
+  { icon: <Rocket    size={20} />, step: '03', title: 'Your team goes live',       body: 'Share the VELA link with your staff. They add it to their home screen and start submitting requests and tracking approvals.' },
 ]
 
 const ADDON_CATALOG = [
   { key: 'power_bi',      label: 'Power BI Embedded',    price: 260, unit: '/mo', desc: 'Custom dashboards on your approvals, compliance, tasks, and asset data.' },
   { key: 'whatsapp_api',  label: 'WhatsApp Business API',price: 20,  unit: '/mo', desc: 'Approval alerts, notice broadcasts, and compliance reminders via WhatsApp.' },
   { key: 'email_api',     label: 'Email API (SendGrid)',  price: 20,  unit: '/mo', desc: 'Transactional emails and scheduled PDF report delivery.' },
-  { key: 'biometric_api', label: 'Biometric API',         price: 33,  unit: '/mo', desc: 'Fingerprint clock-in/out for Android biometric hardware.' },
   { key: 'ocr_api',       label: 'OCR API',               price: 39,  unit: '/mo', desc: 'Scan receipts for Expense Claims and ID docs for HR onboarding. 500 scans/mo.' },
   { key: 'google_maps',   label: 'Google Maps API',        price: 13,  unit: '/mo', desc: 'Location check-ins for field staff and fleet vehicles.' },
 ] as const
@@ -51,7 +50,7 @@ const PLANS = [
     name: 'Starter', price: 49, annual: 499,
     tagline: 'Single company',
     limits: '1 company · 5 branches · 50 employees',
-    features: ['Requests with default approval routing', 'People: leave, timesheets, expenses, complaints', 'Tasks & Targets', 'Company Property — assets & fleet', 'Notices & compliance calendar', 'CSV export', 'Email support'],
+    features: ['Requests with default approval routing', 'People: leave, expenses, complaints', 'Tasks & Targets', 'Notices & compliance calendar', 'CSV export', 'Email support'],
     featured: false,
   },
   {
@@ -71,11 +70,11 @@ const PLANS = [
 ]
 
 const SECTORS = [
-  { icon: '🌾', sector: 'Agriculture',       uses: ['Crop input expense claims', 'Farm vehicle fleet & fuel logs', 'Seasonal staff timesheets', 'Equipment asset register'] },
-  { icon: '🏗️', sector: 'Construction',      uses: ['Project expense claims', 'Asset & equipment register', 'Site staff timesheets', 'Inter-entity material transfers'] },
-  { icon: '🛒', sector: 'Retail & FMCG',     uses: ['Multi-branch leave & scheduling', 'Purchase request approvals', 'Asset register across branches', 'Group-wide oversight'] },
+  { icon: '🌾', sector: 'Agriculture',       uses: ['Crop input expense claims', 'Seasonal staff leave & scheduling', 'Purchase order tracking', 'Compliance calendar for inspections'] },
+  { icon: '🏗️', sector: 'Construction',      uses: ['Project expense claims', 'Purchase order approvals', 'Site staff leave & scheduling', 'Inter-entity material transfers'] },
+  { icon: '🛒', sector: 'Retail & FMCG',     uses: ['Multi-branch leave & scheduling', 'Purchase request approvals', 'Vendor & purchase order tracking', 'Group-wide oversight'] },
   { icon: '🏨', sector: 'Hospitality',        uses: ['Petty cash requests', 'Staff duty rosters', 'Compliance certificate tracking', 'Notice board for shift updates'] },
-  { icon: '🏭', sector: 'Manufacturing',      uses: ['Production expense claims', 'Equipment & vehicle register', 'Site staff timesheets', 'Compliance calendar for inspections'] },
+  { icon: '🏭', sector: 'Manufacturing',      uses: ['Production expense claims', 'Purchase order tracking', 'Site staff leave & scheduling', 'Compliance calendar for inspections'] },
   { icon: '🏦', sector: 'Financial Services', uses: ['Audit trail on all approvals', 'Inter-entity transfer requests', 'Regulatory compliance calendar', 'Executive insights dashboard'] },
 ]
 

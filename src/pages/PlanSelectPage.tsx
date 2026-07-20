@@ -9,7 +9,7 @@ const PLAN_DETAILS: { key: Plan; name: string; tagline: string; monthly: number 
   {
     key: 'starter', name: 'Starter', tagline: 'Single company',
     monthly: 49, annual: 499,
-    features: ['1 company · 5 branches · 50 employees', 'Requests with default approval routing', 'People: leave, timesheets, expenses, complaints', 'Tasks & Targets', 'Company Property (assets & fleet)', 'Notices & compliance calendar', 'CSV export', 'Email support'],
+    features: ['1 company · 5 branches · 50 employees', 'Requests with default approval routing', 'People: leave, expenses, complaints', 'Tasks & Targets', 'Notices & compliance calendar', 'CSV export', 'Email support'],
   },
   {
     key: 'group', name: 'Group', tagline: 'Multi-company holding group',

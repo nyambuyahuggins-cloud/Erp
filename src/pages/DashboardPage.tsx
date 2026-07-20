@@ -3,7 +3,7 @@ import Layout from '../components/Layout'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { FileText, CheckSquare, Target, Clock, TrendingUp, AlertTriangle, Bell, WifiOff, Megaphone, Calendar, ChevronRight } from 'lucide-react'
+import { FileText, CheckSquare, Target, Clock, AlertTriangle, Bell, WifiOff, Megaphone, Calendar, ChevronRight } from 'lucide-react'
 import { syncEngine, SyncStatus } from '../lib/syncEngine'
 import { offlineQueue } from '../lib/offlineQueue'
 import { OfflineBanner } from '../components/AppPrompts'
@@ -15,7 +15,7 @@ export default function DashboardPage() {
   const { profile, post, tenant, effectivePlan } = useAuth()
   const navigate = useNavigate()
   const { openTray } = useNoticesTray()
-  const [stats, setStats] = useState({ pendingRequests:0, openTasks:0, activeTargets:0, pendingLeave:0, complianceDue:0, pendingTimesheets:0 })
+  const [stats, setStats] = useState({ pendingRequests:0, openTasks:0, activeTargets:0, pendingLeave:0, complianceDue:0 })
   const [recentRequests, setRecentRequests] = useState<any[]>([])
   const [notices, setNotices] = useState<any[]>([])
   const [compliance, setCompliance] = useState<any[]>([])
@@ -44,18 +44,17 @@ export default function DashboardPage() {
       setLoading(false); return
     }
 
-    const [reqRes, taskRes, targetRes, leaveRes, compCountRes, tsRes, recentRes, noticeRes, compRes] = await Promise.all([
+    const [reqRes, taskRes, targetRes, leaveRes, compCountRes, recentRes, noticeRes, compRes] = await Promise.all([
       supabase.from('funding_requests').select('id', { count:'exact', head:true }).eq('tenant_id', tid).eq('status','pending'),
       supabase.from('tasks').select('id', { count:'exact', head:true }).eq('tenant_id', tid).eq('assigned_to', uid).in('status',['open','inprogress']),
       supabase.from('targets').select('id', { count:'exact', head:true }).eq('tenant_id', tid).eq('assigned_to', uid).lt('progress',100),
       supabase.from('leave_requests').select('id', { count:'exact', head:true }).eq('tenant_id', tid).eq('status','pending'),
       supabase.from('compliance_items').select('id', { count:'exact', head:true }).eq('tenant_id', tid).is('deleted_at', null).in('status',['upcoming','overdue']),
-      supabase.from('timesheet_entries').select('id', { count:'exact', head:true }).eq('tenant_id', tid).eq('status','pending'),
       supabase.from('funding_requests').select('ref,amount,status,category,created_at').eq('tenant_id', tid).order('created_at', { ascending:false }).limit(5),
       supabase.from('notice_board_posts').select('*, user_profiles!posted_by(full_name)').eq('tenant_id', tid).is('deleted_at', null).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).order('created_at', { ascending:false }).limit(3),
       supabase.from('compliance_items').select('*, user_profiles!responsible_id(full_name)').eq('tenant_id', tid).is('deleted_at', null).in('status',['upcoming','overdue']).order('due_date').limit(5),
     ])
-    const statsData = { pendingRequests:reqRes.count||0, openTasks:taskRes.count||0, activeTargets:targetRes.count||0, pendingLeave:leaveRes.count||0, complianceDue:compCountRes.count||0, pendingTimesheets:tsRes.count||0 }
+    const statsData = { pendingRequests:reqRes.count||0, openTasks:taskRes.count||0, activeTargets:targetRes.count||0, pendingLeave:leaveRes.count||0, complianceDue:compCountRes.count||0 }
     const recent = recentRes.data || []
     const noticeData = noticeRes.data || []
     const compData = compRes.data || []
@@ -70,7 +69,6 @@ export default function DashboardPage() {
     { label: 'Active Targets',   value: stats.activeTargets,     icon: <Target     size={16}/>, color: 'var(--success)',  bgColor: 'var(--success-dim)', path: '/work' },
     { label: 'Leave Pending',    value: stats.pendingLeave,      icon: <Clock      size={16}/>, color: '#a78bfa',         bgColor: 'rgba(167,139,250,0.1)',path: '/hr' },
     { label: 'Compliance Due',   value: stats.complianceDue,    icon: <AlertTriangle size={16}/>, color: 'var(--danger)', bgColor: 'var(--danger-dim)',path: '/notices#compliance' },
-    { label: 'Timesheets Due',   value: stats.pendingTimesheets, icon: <TrendingUp size={16}/>, color: '#fb923c',         bgColor: 'rgba(251,146,60,0.1)', path: '/hr' },
   ]
 
   return (
@@ -99,7 +97,6 @@ export default function DashboardPage() {
                   { label:'Set up your group',    desc:'Add subsidiary companies and branches',     path:'/group',    icon:'🏢' },
                   { label:'Invite your team',     desc:'Add staff and assign roles in Admin',       path:'/admin',    icon:'👥' },
                   { label:'Configure approvals',  desc:'Set your approval thresholds or rules',     path:'/admin',    icon:'✅' },
-                  { label:'Add company assets',   desc:'Register vehicles, equipment and property', path:'/inventory',icon:'🏗️' },
                 ].map(step => (
                   <button key={step.label} onClick={() => navigate(step.path)}
                     style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:'0.875rem', cursor:'pointer', textAlign:'left', display:'flex', gap:'0.625rem', alignItems:'flex-start', transition:'border-color 0.15s' }}

@@ -6,7 +6,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 
 // Pages that are top-level — don't show a back button on these
-const ROOT_PATHS = ['/dashboard', '/requests', '/hr', '/inventory', '/group', '/admin', '/settings', '/profile', '/work', '/notices', '/finance']
+const ROOT_PATHS = ['/dashboard', '/requests', '/hr', '/group', '/admin', '/settings', '/profile', '/work', '/notices', '/finance']
 
 interface LayoutProps {
   children: React.ReactNode
@@ -27,8 +27,7 @@ export default function Layout({ children, title, action }: LayoutProps) {
         {title && (
           <header style={{
             padding: '0.875rem 1.5rem',
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--bg-850)',
+            background: 'var(--bg-900)',
             flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             gap: '0.75rem',

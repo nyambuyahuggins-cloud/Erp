@@ -26,7 +26,6 @@ import { ProfilePage, AuditPage, NotFoundPage, ToSPage, PrivacyPage } from './pa
 
 const AccountingPage   = lazy(() => import('./pages/AccountingPage'))
 const AnalyticsPage    = lazy(() => import('./pages/AnalyticsPage'))
-const InventoryPage    = lazy(() => import('./pages/InventoryPage'))
 const GroupPage        = lazy(() => import('./pages/GroupPage'))
 const FinancePage      = lazy(() => import('./pages/FinancePage'))
 const NoticesPage      = lazy(() => import('./pages/NoticesPage'))
@@ -115,7 +114,6 @@ function AppRoutes() {
         <Route path="/audit"      element={<ProtectedRoute><AuditPage /></ProtectedRoute>} />
         <Route path="/settings"   element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
         <Route path="/admin"      element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
-        <Route path="/inventory"  element={<ProtectedRoute><InventoryPage /></ProtectedRoute>} />
         <Route path="/api-keys"   element={<Navigate to="/settings" replace />} />
         <Route path="/api-settings" element={<Navigate to="/settings" replace />} />
         <Route path="/integrations" element={<Navigate to="/settings" replace />} />

@@ -1,17 +1,16 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { ChevronDown, Megaphone, CalendarClock } from 'lucide-react'
+import { ChevronDown, Megaphone, CalendarClock, Plus, X } from 'lucide-react'
 import SyncStatusBadge from './SyncStatusBadge'
 import DemoPersonaSwitcher, { isDemoSession } from './DemoPersonaSwitcher'
 import { useNoticesTray } from '../contexts/NoticesTrayContext'
+import { audit } from '../lib/audit'
+import { getPlanLimits } from '../lib/planEnforcement'
 
-const PLAN_COLORS: Record<string, string> = {
-  enterprise: 'var(--gold)',
-  group:      'var(--info)',
-  starter:    '#9ca3af',
-}
+const DOC_TYPES = ['general', 'invoice', 'contract', 'employee_file', 'report', 'policy', 'other'] as const
+type DocType = typeof DOC_TYPES[number]
 
 const RESET_HOUR_UTC = 2
 function msUntilReset(): number {
@@ -36,6 +35,10 @@ export default function EntityContextBar() {
   const [noticeCount,  setNoticeCount]  = useState(0)
   const [complianceDot,setComplianceDot]= useState<'overdue' | 'upcoming' | null>(null)
   const [countdown,    setCountdown]    = useState(msUntilReset())
+  const [showUpload,   setShowUpload]   = useState(false)
+  const [uploading,    setUploading]    = useState(false)
+  const [uploadForm,   setUploadForm]   = useState({ document_type: 'general' as DocType, description: '', entity_id: '' })
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const level  = post?.hierarchy_levels
   const isExec = level && level.rank <= 1
@@ -102,14 +105,59 @@ export default function EntityContextBar() {
 
   const displayName = activeEntity?.name || tenant?.name || ''
   const canSwitch   = !!(isExec && entities.length > 1)
-  const planColor   = PLAN_COLORS[effectivePlan] || 'var(--text-muted)'
+
+  async function handleQuickUpload() {
+    const file = fileRef.current?.files?.[0]
+    if (!file || !profile) return
+    setUploading(true)
+    try {
+      const storagePath = `${profile.tenant_id}/documents/${Date.now()}_${file.name}`
+      const { error: storageError } = await supabase.storage
+        .from('vela-documents')
+        .upload(storagePath, file, { contentType: file.type, upsert: false })
+      if (storageError) throw storageError
+
+      const plan = (tenant?.plan || 'starter') as 'starter' | 'group' | 'enterprise'
+      const retentionDays = getPlanLimits(plan).documentRetentionDays
+      const retentionUntil = new Date()
+      retentionUntil.setDate(retentionUntil.getDate() + retentionDays)
+
+      const { data: doc, error: dbError } = await supabase.from('documents').insert({
+        tenant_id: profile.tenant_id,
+        entity_id: uploadForm.entity_id || profile.entity_id,
+        uploaded_by: profile.id,
+        file_name: file.name,
+        file_size: file.size,
+        mime_type: file.type,
+        storage_path: storagePath,
+        document_type: uploadForm.document_type,
+        description: uploadForm.description,
+        tags: [],
+        is_confidential: false,
+        retention_until: retentionUntil.toISOString(),
+      }).select().single()
+      if (dbError) throw dbError
+
+      await audit.submitted({
+        tenant_id: profile.tenant_id, actor_id: profile.id,
+        entity_type: 'document', entity_id: doc.id, entity_name: file.name,
+        after_snapshot: { file_name: file.name, document_type: uploadForm.document_type }
+      })
+
+      setShowUpload(false)
+      setUploadForm({ document_type: 'general', description: '', entity_id: '' })
+      if (fileRef.current) fileRef.current.value = ''
+    } catch (e: unknown) {
+      alert(`Upload failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+    } finally {
+      setUploading(false)
+    }
+  }
 
   return (
     <div style={{
       flexShrink: 0,
-      background: 'var(--bg-850)',
-      // Single subtle shadow instead of a hard border — no industrial lines
-      boxShadow: '0 1px 0 rgba(255,255,255,0.04)',
+      background: 'var(--bg-900)',
     }}>
 
       {/* ── DEMO STRIP (merged — no separate DemoBanner bar) ──────── */}
@@ -136,16 +184,36 @@ export default function EntityContextBar() {
 
       {/* ── MAIN HEADER ROW ────────────────────────────────────────── */}
       <div style={{
-        display: 'flex', alignItems: 'center',
+        display: 'grid',
+        gridTemplateColumns: '1fr auto 1fr',
+        alignItems: 'center',
         height: 52,
         padding: '0 0.75rem 0 1.25rem',
         paddingLeft: 'max(1.25rem, env(safe-area-inset-left))',
         gap: '0.75rem',
       }}>
 
-        {/* LEFT — Entity name as the hero, like WhatsApp's "Chats" */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
-          {/* Entity name — prominent, not labelled */}
+        {/* LEFT — quick add document */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+          <button
+            title="Add document"
+            onClick={() => setShowUpload(true)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 36, height: 36, borderRadius: 'var(--radius-md)',
+              background: 'none', border: '1px solid var(--border)', cursor: 'pointer',
+              color: 'var(--text-muted)', transition: 'background var(--t-base), color var(--t-base)',
+              flexShrink: 0,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--gold)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)' }}
+          >
+            <Plus size={18} />
+          </button>
+        </div>
+
+        {/* MIDDLE — Entity switcher, centered */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
           <div style={{ position: 'relative', minWidth: 0 }}>
             <button
               onClick={() => canSwitch && setShowDropdown(!showDropdown)}
@@ -182,7 +250,7 @@ export default function EntityContextBar() {
               <>
                 <div style={{ position: 'fixed', inset: 0, zIndex: 30 }} onClick={() => setShowDropdown(false)} />
                 <div style={{
-                  position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 31,
+                  position: 'absolute', top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)', zIndex: 31,
                   background: 'var(--bg-850)', border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-lg)', padding: 'var(--sp-2)',
                   minWidth: 240, boxShadow: 'var(--shadow-3)',
@@ -212,25 +280,10 @@ export default function EntityContextBar() {
               </>
             )}
           </div>
-
-          {/* Plan badge — tiny, unobtrusive */}
-          {tenant && (
-            <span style={{
-              fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.07em',
-              textTransform: 'uppercase', padding: '2px 6px',
-              borderRadius: 'var(--radius-pill)',
-              background: `${planColor}12`,
-              color: planColor,
-              border: `1px solid ${planColor}22`,
-              flexShrink: 0,
-            }}>
-              {effectivePlan}
-            </span>
-          )}
         </div>
 
         {/* RIGHT — notification icons: big, unmissable */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.125rem', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.125rem', flexShrink: 0 }}>
           <SyncStatusBadge />
 
           {/* Notices — icon turns gold + background tints when there are new notices */}
@@ -255,6 +308,47 @@ export default function EntityContextBar() {
           />
         </div>
       </div>
+
+      {/* Quick upload modal — same storage bucket & documents table as the Documents page */}
+      {showUpload && (
+        <div className="modal-backdrop" onClick={() => setShowUpload(false)}>
+          <div className="card" style={{ width: '100%', maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ margin: 0, fontFamily: "'Playfair Display', serif", fontSize: 'var(--text-body)' }}>Add document</h3>
+              <button onClick={() => setShowUpload(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>File *</label>
+                <input ref={fileRef} type="file" className="input" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.csv,.txt" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Type</label>
+                <select className="input" value={uploadForm.document_type} onChange={e => setUploadForm({ ...uploadForm, document_type: e.target.value as DocType })}>
+                  {DOC_TYPES.map(t => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Entity</label>
+                <select className="input" value={uploadForm.entity_id} onChange={e => setUploadForm({ ...uploadForm, entity_id: e.target.value })}>
+                  <option value="">My Entity</option>
+                  {entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Description</label>
+                <input className="input" value={uploadForm.description} onChange={e => setUploadForm({ ...uploadForm, description: e.target.value })} placeholder="Brief description..." />
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button className="btn-ghost" onClick={() => setShowUpload(false)}>Cancel</button>
+                <button className="btn-gold" onClick={handleQuickUpload} disabled={uploading}>
+                  {uploading ? 'Uploading...' : 'Upload'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

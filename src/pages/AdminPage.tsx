@@ -19,9 +19,8 @@ const ADDON_CATALOG = [
   { key: 'power_bi',        label: 'Power BI Embedded',         cost: 200,  price: 260,  unit: '/mo',    desc: 'Isolated Power BI workspace for custom dashboards on your approvals, compliance, tasks, and asset data.' },
   { key: 'whatsapp_api',    label: 'WhatsApp Business API',     cost: 15,   price: 20,   unit: '/mo',    desc: 'Dedicated phone number for approval alerts, notice broadcasts, and compliance reminders via WhatsApp.' },
   { key: 'email_api',       label: 'Email API (SendGrid)',       cost: 15,   price: 20,   unit: '/mo',    desc: 'Transactional emails and scheduled report delivery.' },
-  { key: 'biometric_api',   label: 'Biometric API',             cost: 25,   price: 33,   unit: '/mo',    desc: 'Fingerprint clock-in/out for Timesheets. Works with most Android biometric hardware.' },
   { key: 'ocr_api',         label: 'OCR API',                   cost: 30,   price: 39,   unit: '/mo',    desc: 'Scan receipts for Expense Claims and ID documents for HR onboarding. Includes 500 scans/mo; extra scans $0.03 each.' },
-  { key: 'google_maps',     label: 'Google Maps API',            cost: 10,   price: 13,   unit: '/mo',    desc: 'Location check-ins for field staff and fleet vehicles under Company Property.' },
+  { key: 'google_maps',     label: 'Google Maps API',            cost: 10,   price: 13,   unit: '/mo',    desc: 'Location check-ins for field staff and fleet vehicles.' },
 ] as const
 
 type AddonKey = typeof ADDON_CATALOG[number]['key']

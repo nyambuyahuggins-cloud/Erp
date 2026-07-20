@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import {
   LayoutDashboard, FileText, Users, ClipboardList,
-  Warehouse, Menu, X, Shield, Settings, Building2, DollarSign,
+  Menu, X, Shield, Settings, Building2, DollarSign,
 } from 'lucide-react'
 
 interface NavItem { icon: React.ReactNode; label: string; path: string; badge?: number }
@@ -40,7 +40,6 @@ export default function Sidebar() {
     { icon: <FileText        size={16} />, label: 'Requests',         path: '/requests' },
     { icon: <Users           size={16} />, label: 'People',           path: '/hr' },
     { icon: <ClipboardList   size={16} />, label: 'Tasks & Targets',  path: '/work' },
-    { icon: <Warehouse       size={16} />, label: 'Company Property', path: '/inventory' },
     ...(isAccounting ? [{ icon: <DollarSign size={16} />, label: 'Finance', path: '/finance' }] : []),
     ...(isManager ? [{ icon: <Building2 size={16} />, label: 'Group', path: '/group' }] : []),
     ...(isITAdmin ? [{ icon: <Shield    size={16} />, label: 'Admin', path: '/admin' }] : []),
@@ -51,7 +50,6 @@ export default function Sidebar() {
     if (path === '/group')     return ['/consolidation', '/hierarchy', '/group', '/oversight'].includes(location.pathname)
     if (path === '/hr')        return ['/hr', '/oversight'].includes(location.pathname)
     if (path === '/admin')     return ['/admin', '/api-keys', '/api-settings', '/integrations', '/reports'].includes(location.pathname)
-    if (path === '/inventory') return ['/inventory'].includes(location.pathname)
     return location.pathname === path
   }
 

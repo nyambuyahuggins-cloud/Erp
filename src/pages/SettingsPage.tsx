@@ -181,7 +181,7 @@ function DisplayTab({ theme, toggleTheme, post }: any) {
       <div className="card">
         <h3 style={{ margin: '0 0 1rem', fontSize: 'var(--text-small)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Default Landing Page</h3>
         <select className="input" style={{ maxWidth: 280 }} value={defaultPage} onChange={e => saveDefaultPage(e.target.value)}>
-          {['/dashboard', '/requests', '/hr', '/work', '/inventory', '/notices', ...(level?.can_see_budgets || level?.is_accounting || (level && level.rank <= 1) ? ['/finance'] : [])].map(p => (
+          {['/dashboard', '/requests', '/hr', '/work', '/notices', ...(level?.can_see_budgets || level?.is_accounting || (level && level.rank <= 1) ? ['/finance'] : [])].map(p => (
             <option key={p} value={p}>{p.replace('/', '').replace('-', ' ') || 'dashboard'}</option>
           ))}
         </select>

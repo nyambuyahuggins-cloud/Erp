@@ -5,12 +5,12 @@ import { supabase } from '../lib/supabase'
 import { dbWrite } from '../lib/offlineWrite'
 import { notify } from '../lib/notify'
 import {
-  Plus, X, Heart, Wallet, Clock, LogIn, LogOut,
+  Plus, X, Heart,
   Download, Users, CheckSquare, Trash2, Receipt
 } from 'lucide-react'
 import TabBar from '../components/TabBar'
 
-type HRTab = 'leave' | 'timesheets' | 'payroll' | 'expenses' | 'complaints'
+type HRTab = 'leave' | 'expenses' | 'complaints'
 
 export default function HRPage() {
   const { profile, post, activeEntityId } = useAuth()
@@ -18,15 +18,11 @@ export default function HRPage() {
 
   const level = post?.hierarchy_levels
   const isManager = level && level.rank <= 2
-  const isAccounting = level?.is_accounting
-  const canSeePayroll = isAccounting || (level && level.rank <= 1)
   const entityId = activeEntityId || profile?.entity_id
 
   const tabs: { key: HRTab; label: string; icon: React.ReactNode }[] = [
     { key: 'leave', label: 'Leave', icon: <Heart size={13} /> },
-    { key: 'timesheets', label: 'Timesheets', icon: <Clock size={13} /> },
-    ...(canSeePayroll ? [{ key: 'payroll' as HRTab, label: 'Payroll', icon: <Wallet size={13} /> }] : []),
-    { key: 'expenses' as HRTab, label: 'Expenses', icon: <Receipt size={13} /> },
+    { key: 'expenses', label: 'Expenses', icon: <Receipt size={13} /> },
     { key: 'complaints', label: 'Complaints', icon: <CheckSquare size={13} /> },
   ]
 
@@ -47,8 +43,6 @@ export default function HRPage() {
       </TabBar>
 
       {tab === 'leave'       && <LeaveTab       profile={profile} post={post} isManager={isManager} entityId={entityId} />}
-      {tab === 'timesheets'  && <TimesheetsTab  profile={profile} post={post} isManager={isManager} entityId={entityId} />}
-      {tab === 'payroll'     && <PayrollTab     profile={profile} post={post} activeEntityId={activeEntityId} />}
       {tab === 'expenses'    && <ExpenseClaimsTab profile={profile} post={post} entityId={entityId} />}
       {tab === 'complaints'  && <ComplaintsTab  profile={profile} entityId={entityId} />}
     </Layout>
@@ -161,293 +155,6 @@ function LeaveTab({ profile, post, isManager, entityId }: any) {
               <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
                 <button type="button" className="btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
                 <button type="submit" className="btn-gold" disabled={submitting}>{submitting ? 'Applying...' : 'Apply'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
-/* ─── TIMESHEETS TAB ──────────────────────────────────────────────── */
-function TimesheetsTab({ profile, post, isManager, entityId }: any) {
-  const [entries, setEntries] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [activeEntry, setActiveEntry] = useState<any>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [teamView, setTeamView] = useState(false)
-  const [weekSummary, setWeekSummary] = useState({ total: 0, days: 0 })
-
-  useEffect(() => { if (profile) { load(); checkActive() } }, [profile, teamView])
-
-  async function load() {
-    setLoading(true)
-    let q = supabase.from('timesheet_entries')
-      .select('*, user_profiles!user_id(full_name), entities!entity_id(name)')
-      .eq('tenant_id', profile.tenant_id).order('clock_in', { ascending: false }).limit(100)
-    if (!teamView) q = q.eq('user_id', profile.id)
-    const { data } = await q
-    setEntries(data || [])
-    const now = new Date()
-    const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0,0,0,0)
-    const myWeek = (data || []).filter((e: any) => e.user_id === profile.id && e.clock_out && new Date(e.clock_in) >= startOfWeek)
-    const totalHours = myWeek.reduce((s: number, e: any) => s + (parseFloat(e.hours_worked) || 0), 0)
-    setWeekSummary({ total: totalHours, days: new Set(myWeek.map((e: any) => new Date(e.clock_in).toDateString())).size })
-    setLoading(false)
-  }
-
-  async function checkActive() {
-    const { data } = await supabase.from('timesheet_entries').select('*').eq('user_id', profile.id).is('clock_out', null).limit(1)
-    setActiveEntry(data?.[0] || null)
-  }
-
-  async function clockIn() {
-    if (activeEntry) return
-    setSubmitting(true)
-    await dbWrite('timesheet_entries', 'insert', { tenant_id: profile.tenant_id, user_id: profile.id, entity_id: entityId, clock_in: new Date().toISOString(), status: 'pending' })
-    await checkActive(); load(); setSubmitting(false)
-  }
-
-  async function clockOut() {
-    if (!activeEntry) return
-    setSubmitting(true)
-    await supabase.from('timesheet_entries').update({ clock_out: new Date().toISOString() }).eq('id', activeEntry.id)
-    setActiveEntry(null); load(); setSubmitting(false)
-  }
-
-  async function approve(id: string) {
-    await supabase.from('timesheet_entries').update({ status: 'approved', approved_by: profile.id, approved_at: new Date().toISOString() }).eq('id', id)
-    load()
-  }
-
-  function fmt(h: number | null) { if (!h) return '—'; const hrs = Math.floor(h); const m = Math.round((h-hrs)*60); return `${hrs}h ${m}m` }
-  function fmtTime(ts: string) { return new Date(ts).toLocaleTimeString('en-ZW', { hour: '2-digit', minute: '2-digit' }) }
-  function fmtDate(ts: string) { return new Date(ts).toLocaleDateString('en-ZW', { day: 'numeric', month: 'short' }) }
-
-  return (
-    <>
-      {/* Clock in/out widget */}
-      <div className="card" style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <p style={{ margin: 0, fontSize: 'var(--text-micro)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>{activeEntry ? 'Clocked In' : 'Not Clocked In'}</p>
-          {activeEntry && <p style={{ margin: '2px 0 0', fontSize: 'var(--text-small)', color: 'var(--gold)' }}>Since {fmtTime(activeEntry.clock_in)} · {fmtDate(activeEntry.clock_in)}</p>}
-        </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <div style={{ textAlign: 'right' }}>
-            <p style={{ margin: 0, fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>This week</p>
-            <p style={{ margin: 0, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{fmt(weekSummary.total)} · {weekSummary.days}d</p>
-          </div>
-          {activeEntry
-            ? <button className="btn-ghost" onClick={clockOut} disabled={submitting} style={{ gap: 5, borderColor: 'var(--danger)', color: 'var(--danger)' }}><LogOut size={14} />Clock Out</button>
-            : <button className="btn-gold" onClick={clockIn} disabled={submitting} style={{ gap: 5 }}><LogIn size={14} />Clock In</button>}
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        {isManager && (
-          <TabBar>
-            <button className={`tab ${!teamView ? 'active' : ''}`} style={{ fontSize: 'var(--text-small)' }} onClick={() => setTeamView(false)}>My Entries</button>
-            <button className={`tab ${teamView ? 'active' : ''}`} style={{ fontSize: 'var(--text-small)' }} onClick={() => setTeamView(true)}>Team</button>
-          </TabBar>
-        )}
-      </div>
-
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><div className="spinner" /></div>
-          : entries.length === 0 ? <div className="empty-state"><div className="empty-state-icon"><Clock size={40} strokeWidth={1} /></div><p className="empty-state-title">No timesheet entries</p></div>
-          : <div style={{ overflowX: 'auto' }}><table className="data-table">
-              <thead><tr>{teamView && <th>Employee</th>}<th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th>{isManager && teamView && <th></th>}</tr></thead>
-              <tbody>{entries.map(e => (
-                <tr key={e.id}>
-                  {teamView && <td style={{ fontWeight: 500 }}>{e.user_profiles?.full_name}</td>}
-                  <td style={{ color: 'var(--text-muted)' }}>{fmtDate(e.clock_in)}</td>
-                  <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)' }}>{fmtTime(e.clock_in)}</td>
-                  <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)', color: e.clock_out ? 'inherit' : 'var(--gold)' }}>{e.clock_out ? fmtTime(e.clock_out) : '⏳'}</td>
-                  <td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: 'var(--gold)' }}>{fmt(e.hours_worked ? parseFloat(e.hours_worked) : null)}</td>
-                  <td><span className={`badge badge-${e.status === 'approved' ? 'approved' : e.status === 'rejected' ? 'rejected' : 'pending'}`}>{e.status}</span></td>
-                  {isManager && teamView && <td>{e.status === 'pending' && e.clock_out && <button className="btn-gold" style={{ padding: '0.25rem 0.6rem', fontSize: 'var(--text-micro)' }} onClick={() => approve(e.id)}>Approve</button>}</td>}
-                </tr>
-              ))}</tbody>
-            </table></div>}
-      </div>
-    </>
-  )
-}
-
-/* ─── PAYROLL TAB ─────────────────────────────────────────────────── */
-function PayrollTab({ profile, post, activeEntityId }: any) {
-  const [employees, setEmployees] = useState<any[]>([])
-  const [runs, setRuns] = useState<any[]>([])
-  const [users, setUsers] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [subTab, setSubTab] = useState<'employees' | 'runs'>('employees')
-  const [showEmpModal, setShowEmpModal] = useState(false)
-  const [showRunModal, setShowRunModal] = useState(false)
-  const [editEmp, setEditEmp] = useState<any>(null)
-  const [empForm, setEmpForm] = useState({ user_id: '', base_salary: '', housing_allowance: '', transport_allowance: '' })
-  const [runPeriod, setRunPeriod] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-
-  const level = post?.hierarchy_levels
-  const canAccess = level?.is_accounting || (level && level.rank <= 1)
-
-  useEffect(() => { if (profile && canAccess) { load(); loadUsers() } }, [profile, canAccess])
-
-  async function load() {
-    setLoading(true)
-    const [empRes, runRes] = await Promise.all([
-      supabase.from('payroll_employees').select('*, user_profiles!user_id(full_name), entities!entity_id(name)').eq('tenant_id', profile.tenant_id).eq('is_active', true).limit(500),
-      supabase.from('payroll_runs').select('*, entities!entity_id(name), run_by_profile:user_profiles!run_by(full_name)').eq('tenant_id', profile.tenant_id).order('created_at', { ascending: false }).limit(50)
-    ])
-    setEmployees(empRes.data || []); setRuns(runRes.data || []); setLoading(false)
-  }
-
-  async function loadUsers() {
-    const { data } = await supabase.from('user_profiles').select('id,full_name').eq('tenant_id', profile.tenant_id).eq('is_active', true).is('deleted_at', null)
-    setUsers(data || [])
-  }
-
-  function openAdd() { setEditEmp(null); setEmpForm({ user_id: '', base_salary: '', housing_allowance: '', transport_allowance: '' }); setShowEmpModal(true) }
-  function openEdit(emp: any) {
-    setEditEmp(emp)
-    setEmpForm({ user_id: emp.user_id, base_salary: String(emp.base_salary), housing_allowance: String(emp.housing_allowance || 0), transport_allowance: String(emp.transport_allowance || 0) })
-    setShowEmpModal(true)
-  }
-
-  async function saveEmployee(e: React.FormEvent) {
-    e.preventDefault(); setSubmitting(true)
-    if (editEmp) {
-      await supabase.from('payroll_employees').update({ base_salary: parseFloat(empForm.base_salary), housing_allowance: parseFloat(empForm.housing_allowance || '0'), transport_allowance: parseFloat(empForm.transport_allowance || '0') }).eq('id', editEmp.id)
-    } else {
-      const { data: up } = await supabase.from('user_profiles').select('entity_id').eq('id', empForm.user_id).single()
-      await supabase.from('payroll_employees').insert({ tenant_id: profile.tenant_id, user_id: empForm.user_id, entity_id: up?.entity_id || profile.entity_id, base_salary: parseFloat(empForm.base_salary), housing_allowance: parseFloat(empForm.housing_allowance || '0'), transport_allowance: parseFloat(empForm.transport_allowance || '0') })
-    }
-    setShowEmpModal(false); setEditEmp(null); await load(); setSubmitting(false)
-  }
-
-  async function removeEmployee(id: string) {
-    if (!confirm('Remove this employee from payroll?')) return
-    await supabase.from('payroll_employees').update({ is_active: false }).eq('id', id)
-    await load()
-  }
-
-  async function runPayroll(e: React.FormEvent) {
-    e.preventDefault(); setSubmitting(true)
-    const entityEmps = employees.filter(emp => !activeEntityId || emp.entity_id === activeEntityId)
-    const totalGross = entityEmps.reduce((s, e) => s + parseFloat(e.base_salary) + parseFloat(e.housing_allowance || 0) + parseFloat(e.transport_allowance || 0), 0)
-    const { data: run } = await supabase.from('payroll_runs').insert({ tenant_id: profile.tenant_id, entity_id: activeEntityId || profile.entity_id, period: runPeriod, status: 'draft', total_gross: totalGross, run_by: profile.id }).select().single()
-    if (run) await supabase.from('payroll_entries').insert(entityEmps.map(emp => ({ tenant_id: profile.tenant_id, run_id: run.id, employee_id: emp.id, base_salary: parseFloat(emp.base_salary), housing_allowance: parseFloat(emp.housing_allowance || 0), transport_allowance: parseFloat(emp.transport_allowance || 0), gross_pay: parseFloat(emp.base_salary) + parseFloat(emp.housing_allowance || 0) + parseFloat(emp.transport_allowance || 0) })))
-    setShowRunModal(false); await load(); setSubmitting(false)
-  }
-
-  async function exportCSV(run: any) {
-    const { data: entries } = await supabase.from('payroll_entries').select('*, payroll_employees!employee_id(user_profiles!user_id(full_name))').eq('run_id', run.id)
-    if (!entries) return
-    const rows = [['Employee','Base Salary','Housing','Transport','Gross Pay'], ...entries.map(e => [e.payroll_employees?.user_profiles?.full_name || '', e.base_salary, e.housing_allowance, e.transport_allowance, e.gross_pay])]
-    const blob = new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' })
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `payroll-${run.period}.csv`; a.click()
-  }
-
-  if (!canAccess) return <div className="card" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Payroll access is restricted to Accounting and Executives.</div>
-
-  return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-        <TabBar>
-          <button className={`tab ${subTab === 'employees' ? 'active' : ''}`} style={{ fontSize: 'var(--text-small)' }} onClick={() => setSubTab('employees')}>Employees ({employees.length})</button>
-          <button className={`tab ${subTab === 'runs' ? 'active' : ''}`} style={{ fontSize: 'var(--text-small)' }} onClick={() => setSubTab('runs')}>Pay Runs</button>
-        </TabBar>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button className="btn-ghost" style={{ fontSize: 'var(--text-small)', gap: 5 }} onClick={openAdd}><Plus size={13} />Add Employee</button>
-          {employees.length > 0 && <button className="btn-gold" style={{ fontSize: 'var(--text-small)', gap: 5 }} onClick={() => setShowRunModal(true)}>Run Payroll</button>}
-        </div>
-      </div>
-
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><div className="spinner" /></div>
-          : subTab === 'employees' ? (
-            employees.length === 0 ? <div className="empty-state"><div className="empty-state-icon"><Wallet size={40} strokeWidth={1} /></div><p className="empty-state-title">No employees on payroll</p><button className="btn-gold" onClick={openAdd}>Add First Employee</button></div>
-            : <div style={{ overflowX: 'auto' }}><table className="data-table">
-                <thead><tr><th>Employee</th><th>Entity</th><th>Base</th><th>Housing</th><th>Transport</th><th>Gross</th><th></th></tr></thead>
-                <tbody>{employees.map(e => {
-                  const gross = parseFloat(e.base_salary) + parseFloat(e.housing_allowance || 0) + parseFloat(e.transport_allowance || 0)
-                  return (<tr key={e.id}>
-                    <td style={{ fontWeight: 500 }}>{e.user_profiles?.full_name}</td>
-                    <td style={{ color: 'var(--text-muted)' }}>{e.entities?.name}</td>
-                    <td style={{ fontFamily: "'JetBrains Mono', monospace" }}>USD {parseFloat(e.base_salary).toFixed(2)}</td>
-                    <td style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-muted)' }}>USD {parseFloat(e.housing_allowance || 0).toFixed(2)}</td>
-                    <td style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-muted)' }}>USD {parseFloat(e.transport_allowance || 0).toFixed(2)}</td>
-                    <td style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--gold)', fontWeight: 600 }}>USD {gross.toFixed(2)}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="btn-ghost" style={{ padding: '0.25rem 0.5rem', fontSize: 'var(--text-micro)' }} onClick={() => openEdit(e)}>Edit</button>
-                        <button onClick={() => removeEmployee(e.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', padding: '0.25rem' }}><Trash2 size={13} /></button>
-                      </div>
-                    </td>
-                  </tr>)
-                })}</tbody>
-              </table></div>
-          ) : (
-            runs.length === 0 ? <div className="empty-state"><p className="empty-state-title">No payroll runs yet</p></div>
-            : <div style={{ overflowX: 'auto' }}><table className="data-table">
-                <thead><tr><th>Period</th><th>Entity</th><th>Total Gross</th><th>Status</th><th>Run By</th><th>Date</th><th></th></tr></thead>
-                <tbody>{runs.map(r => (<tr key={r.id}><td style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--gold)' }}>{r.period}</td><td>{r.entities?.name}</td><td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>USD {parseFloat(r.total_gross).toFixed(2)}</td><td><span className={`badge badge-${r.status === 'paid' ? 'paid' : r.status === 'approved' ? 'approved' : 'draft'}`}>{r.status}</span></td><td style={{ color: 'var(--text-muted)' }}>{r.run_by_profile?.full_name}</td><td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{new Date(r.created_at).toLocaleDateString()}</td><td><button className="btn-ghost" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)', gap: 4 }} onClick={() => exportCSV(r)}><Download size={12} />CSV</button></td></tr>))}</tbody>
-              </table></div>
-          )}
-      </div>
-
-      {showEmpModal && (
-        <div className="modal-backdrop" onClick={() => setShowEmpModal(false)}>
-          <div className="card" style={{ width: '100%', maxWidth: 400 }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 style={{ fontFamily: "'Playfair Display', serif", margin: 0, fontSize: 'var(--text-body)' }}>{editEmp ? 'Edit Payroll Record' : 'Add to Payroll'}</h3>
-              <button onClick={() => setShowEmpModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-            <form onSubmit={saveEmployee}>
-              {!editEmp && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <label className="form-label">Employee</label>
-                  <select className="input" required value={empForm.user_id} onChange={e => setEmpForm({ ...empForm, user_id: e.target.value })}>
-                    <option value="">Select...</option>{users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-                  </select>
-                </div>
-              )}
-              {editEmp && <p style={{ fontSize: 'var(--text-small)', color: 'var(--text-muted)', marginBottom: '1rem' }}>Editing: <strong>{editEmp.user_profiles?.full_name}</strong></p>}
-              {[
-                { label: 'Base Salary (USD)', field: 'base_salary' },
-                { label: 'Housing Allowance (USD)', field: 'housing_allowance' },
-                { label: 'Transport Allowance (USD)', field: 'transport_allowance' },
-              ].map(({ label, field }) => (
-                <div key={field} style={{ marginBottom: '1rem' }}>
-                  <label className="form-label">{label}</label>
-                  <input className="input" type="number" min="0" step="0.01" value={empForm[field as keyof typeof empForm]} onChange={e => setEmpForm({ ...empForm, [field]: e.target.value })} placeholder="0.00" />
-                </div>
-              ))}
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn-ghost" onClick={() => setShowEmpModal(false)}>Cancel</button>
-                <button type="submit" className="btn-gold" disabled={submitting}>{submitting ? 'Saving...' : editEmp ? 'Save Changes' : 'Add'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showRunModal && (
-        <div className="modal-backdrop" onClick={() => setShowRunModal(false)}>
-          <div className="card" style={{ width: '100%', maxWidth: 360 }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 style={{ fontFamily: "'Playfair Display', serif", margin: 0, fontSize: 'var(--text-body)' }}>Run Payroll</h3>
-              <button onClick={() => setShowRunModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)', marginBottom: '1rem' }}>
-              {employees.length} employee(s) · Total gross: <strong style={{ color: 'var(--gold)' }}>USD {employees.reduce((s, e) => s + parseFloat(e.base_salary) + parseFloat(e.housing_allowance || 0) + parseFloat(e.transport_allowance || 0), 0).toFixed(2)}</strong>
-            </p>
-            <form onSubmit={runPayroll}>
-              <div style={{ marginBottom: '1.25rem' }}><label className="form-label">Pay Period</label><input className="input" type="month" required value={runPeriod} onChange={e => setRunPeriod(e.target.value)} /></div>
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn-ghost" onClick={() => setShowRunModal(false)}>Cancel</button>
-                <button type="submit" className="btn-gold" disabled={submitting}>{submitting ? 'Running...' : 'Run'}</button>
               </div>
             </form>
           </div>

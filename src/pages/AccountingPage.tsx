@@ -10,18 +10,15 @@ import { useToast } from '../components/ui/Toast'
 export default function AccountingPage({ embedded }: { embedded?: boolean }) {
   const { profile, post } = useAuth()
   const { toast } = useToast()
-  const [tab, setTab] = useState<'budgets' | 'queue' | 'receipts' | 'purchase_orders' | 'interentity' | 'zimra'>('budgets')
-  const [budgets, setBudgets] = useState<any[]>([])
+  const [tab, setTab] = useState<'queue' | 'receipts' | 'purchase_orders' | 'interentity' | 'approved'>('queue')
   const [pendingRequests, setPendingRequests] = useState<any[]>([])
   const [pendingReceipts, setPendingReceipts] = useState<any[]>([])
   const [remindingId, setRemindingId] = useState<string | null>(null)
   const [interEntityTx, setInterEntityTx] = useState<any[]>([])
-  const [zimraData, setZimraData] = useState<any[]>([])
+  const [approvedData, setApprovedData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [showBudgetModal, setShowBudgetModal] = useState(false)
   const [showIETModal, setShowIETModal] = useState(false)
   const [entities, setEntities] = useState<any[]>([])
-  const [budgetForm, setBudgetForm] = useState({ entity_id: '', department: '', total_amount: '', fiscal_period: '' })
   const [ietForm, setIetForm] = useState({ title: '', description: '', amount: '', category: 'Joint Purchase' })
   const [submitting, setSubmitting] = useState(false)
   const [actionNote, setActionNote] = useState('')
@@ -36,10 +33,7 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
   async function loadAll() {
     setLoading(true)
     const tid = profile!.tenant_id
-    if (tab === 'budgets') {
-      const { data } = await supabase.from('budget_pools').select('*, entities!entity_id(name)').eq('tenant_id', tid).order('created_at', { ascending: false })
-      setBudgets(data || [])
-    } else if (tab === 'queue') {
+    if (tab === 'queue') {
       const { data } = await supabase.from('funding_requests')
         .select('*, user_profiles!requester_id(full_name), entities!entity_id(name)')
         .eq('tenant_id', tid).in('status', ['pending', 'endorsed']).order('created_at')
@@ -55,9 +49,12 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
         .select('*, entities!initiating_entity(name), user_profiles!submitted_by(full_name)')
         .eq('tenant_id', tid).order('created_at', { ascending: false })
       setInterEntityTx(data || [])
-    } else if (tab === 'zimra') {
-      const { data } = await supabase.from('zimra_vat_export').select('*').eq('tenant_id', tid)
-      setZimraData(data || [])
+    } else if (tab === 'approved') {
+      const { data } = await supabase.from('funding_requests')
+        .select('*, user_profiles!requester_id(full_name), entities!entity_id(name)')
+        .eq('tenant_id', tid).in('status', ['approved', 'funded'])
+        .order('approved_at', { ascending: false })
+      setApprovedData(data || [])
     }
     setLoading(false)
   }
@@ -65,23 +62,6 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
   async function loadEntities() {
     const { data } = await supabase.from('entities').select('id,name').eq('tenant_id', profile!.tenant_id).eq('is_active', true)
     setEntities(data || [])
-  }
-
-  async function submitBudget(e: React.FormEvent) {
-    e.preventDefault()
-    setSubmitting(true)
-    await supabase.from('budget_pools').insert({
-      tenant_id: profile!.tenant_id,
-      entity_id: budgetForm.entity_id,
-      department: budgetForm.department,
-      total_amount: parseFloat(budgetForm.total_amount),
-      fiscal_period: budgetForm.fiscal_period,
-      set_by: profile!.id
-    })
-    setShowBudgetModal(false)
-    setBudgetForm({ entity_id: '', department: '', total_amount: '', fiscal_period: '' })
-    loadAll()
-    setSubmitting(false)
   }
 
   async function submitIET(e: React.FormEvent) {
@@ -143,13 +123,13 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
     loadAll()
   }
 
-  function exportZimraCSV() {
-    const rows = [['Invoice Ref', 'Date', 'Description', 'Entity', 'Net Amount', 'VAT 15%', 'Gross Amount', 'Submitted By']]
-    zimraData.forEach(r => rows.push([r.invoice_ref, r.transaction_date, r.description, r.entity_name, r.net_amount, r.vat_15, r.gross_amount, r.submitted_by]))
+  function exportApprovedCSV() {
+    const rows = [['Ref', 'Date', 'Requester', 'Entity', 'Category', 'Amount', 'Status']]
+    approvedData.forEach(r => rows.push([r.ref, r.approved_at, r.user_profiles?.full_name, r.entities?.name, r.category, r.amount, r.status]))
     const csv = rows.map(r => r.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = `zimra-vat-${new Date().toISOString().slice(0, 7)}.csv`; a.click()
+    const a = document.createElement('a'); a.href = url; a.download = `approved-requisitions-${new Date().toISOString().slice(0, 7)}.csv`; a.click()
     URL.revokeObjectURL(url)
   }
 
@@ -167,26 +147,21 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <TabBar>
-          {(['budgets', 'queue', 'receipts', 'purchase_orders', 'interentity', 'zimra'] as const).map(t => (
+          {(['queue', 'receipts', 'purchase_orders', 'interentity', 'approved'] as const).map(t => (
             <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)} style={{ textTransform: 'capitalize' }}>
-              {t === 'interentity' ? 'Inter-Entity' : t === 'zimra' ? 'ZIMRA' : t === 'purchase_orders' ? 'Purchase Orders' : t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === 'interentity' ? 'Inter-Entity' : t === 'purchase_orders' ? 'Purchase Orders' : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </TabBar>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          {tab === 'budgets' && isExec && (
-            <button className="btn-gold" onClick={() => setShowBudgetModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Plus size={16} /> Set Budget
-            </button>
-          )}
           {tab === 'interentity' && isExec && (
             <button className="btn-gold" onClick={() => setShowIETModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Plus size={16} /> New Transaction
             </button>
           )}
-          {tab === 'zimra' && (
-            <button className="btn-ghost" onClick={exportZimraCSV} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Download size={15} /> Export VAT7 CSV
+          {tab === 'approved' && (
+            <button className="btn-ghost" onClick={exportApprovedCSV} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Download size={15} /> Export CSV
             </button>
           )}
         </div>
@@ -195,37 +170,6 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>
-        ) : tab === 'budgets' ? (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="data-table">
-              <thead><tr><th>Entity</th><th>Department</th><th>Period</th><th>Total</th><th>Used</th><th>Reserved</th><th>Available</th></tr></thead>
-              <tbody>
-                {budgets.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No budgets set</td></tr>
-                  : budgets.map(b => {
-                    const available = b.total_amount - b.used_amount - b.reserved_amount
-                    const pct = (b.used_amount / b.total_amount) * 100
-                    return (
-                      <tr key={b.id}>
-                        <td style={{ fontWeight: 500 }}>{b.entities?.name}</td>
-                        <td style={{ color: 'var(--text-muted)' }}>{b.department}</td>
-                        <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)', color: 'var(--gold)' }}>{b.fiscal_period}</td>
-                        <td style={{ fontFamily: "'JetBrains Mono', monospace" }}>USD {parseFloat(b.total_amount).toFixed(2)}</td>
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)' }}>USD {parseFloat(b.used_amount).toFixed(2)}</span>
-                            <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.1)', width: 80 }}>
-                              <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: pct > 80 ? 'var(--danger)' : 'var(--gold)', borderRadius: 2 }} />
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-muted)' }}>USD {parseFloat(b.reserved_amount).toFixed(2)}</td>
-                        <td style={{ fontFamily: "'JetBrains Mono', monospace", color: available < 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 600 }}>USD {available.toFixed(2)}</td>
-                      </tr>
-                    )
-                  })}
-              </tbody>
-            </table>
-          </div>
         ) : tab === 'queue' ? (
           <div style={{ overflowX: 'auto' }}>
             <table className="data-table">
@@ -316,65 +260,27 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
             </table>
           </div>
         ) : (
-          <div>
-            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <p style={{ margin: 0, fontWeight: 600 }}>VAT7 Export</p>
-                <p style={{ margin: '0.25rem 0 0', fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>{zimraData.length} approved/funded transactions</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <p style={{ margin: 0, fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>Total VAT (15%)</p>
-                <p style={{ margin: 0, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: 'var(--gold)' }}>
-                  USD {zimraData.reduce((s, r) => s + parseFloat(r.vat_15 || 0), 0).toFixed(2)}
-                </p>
-              </div>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="data-table">
-                <thead><tr><th>Invoice Ref</th><th>Date</th><th>Entity</th><th>Description</th><th>Net</th><th>VAT 15%</th><th>Gross</th></tr></thead>
-                <tbody>
-                  {zimraData.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No approved transactions found</td></tr>
-                    : zimraData.map((r, i) => (
-                      <tr key={i}>
-                        <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)', color: 'var(--gold)' }}>{r.invoice_ref}</td>
-                        <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{r.transaction_date}</td>
-                        <td>{r.entity_name}</td>
-                        <td>{r.description}</td>
-                        <td style={{ fontFamily: "'JetBrains Mono', monospace" }}>USD {parseFloat(r.net_amount).toFixed(2)}</td>
-                        <td style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--warning)' }}>USD {parseFloat(r.vat_15).toFixed(2)}</td>
-                        <td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>USD {parseFloat(r.gross_amount).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead><tr><th>Ref</th><th>Requester</th><th>Entity</th><th>Category</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+              <tbody>
+                {approvedData.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No approved requisitions found</td></tr>
+                  : approvedData.map(r => (
+                    <tr key={r.id}>
+                      <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)', color: 'var(--gold)' }}>{r.ref}</td>
+                      <td>{r.user_profiles?.full_name}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{r.entities?.name}</td>
+                      <td>{r.category}</td>
+                      <td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>USD {parseFloat(r.amount).toFixed(2)}</td>
+                      <td>{statusBadge(r.status)}</td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{r.approved_at ? new Date(r.approved_at).toLocaleDateString() : '—'}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
-
-      {/* Budget modal */}
-      {showBudgetModal && (
-        <div className="modal-backdrop" onClick={() => setShowBudgetModal(false)}>
-          <div className="card" style={{ width: '100%', maxWidth: 400 }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'var(--text-lead)', margin: 0 }}>Set Budget</h3>
-              <button onClick={() => setShowBudgetModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-            <form onSubmit={submitBudget}>
-              {[
-                { label: 'Entity', el: <select className="input" required value={budgetForm.entity_id} onChange={e => setBudgetForm({ ...budgetForm, entity_id: e.target.value })}><option value="">Select...</option>{entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select> },
-                { label: 'Department', el: <input className="input" required value={budgetForm.department} onChange={e => setBudgetForm({ ...budgetForm, department: e.target.value })} placeholder="e.g. Sales, Operations" /> },
-                { label: 'Fiscal Period', el: <input className="input" required value={budgetForm.fiscal_period} onChange={e => setBudgetForm({ ...budgetForm, fiscal_period: e.target.value })} placeholder="e.g. 2026-Q2" /> },
-                { label: 'Total Amount (USD)', el: <input className="input" type="number" required min="0" step="0.01" value={budgetForm.total_amount} onChange={e => setBudgetForm({ ...budgetForm, total_amount: e.target.value })} placeholder="0.00" /> },
-              ].map(({ label, el }) => <div key={label} style={{ marginBottom: '1rem' }}><label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{label}</label>{el}</div>)}
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn-ghost" onClick={() => setShowBudgetModal(false)}>Cancel</button>
-                <button type="submit" className="btn-gold" disabled={submitting}>{submitting ? 'Setting...' : 'Set Budget'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* IET modal */}
       {showIETModal && (
