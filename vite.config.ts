@@ -6,10 +6,15 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
 
       workbox: {
-        skipWaiting: true,
+        // NOTE: no skipWaiting here on purpose. With registerType 'prompt',
+        // a new service worker installs and then WAITS — it only activates
+        // (and takes over the page) once the person confirms via the toast
+        // in AppPrompts.tsx, which posts SKIP_WAITING to it. This is what
+        // makes the "Update available" prompt meaningful instead of the
+        // update silently happening underneath an already-open tab.
         clientsClaim: true,
         cleanupOutdatedCaches: true,
 

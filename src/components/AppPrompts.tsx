@@ -23,24 +23,69 @@ export function OfflineBanner() {
 /* ── SW Update Prompt ───────────────────────────────────────── */
 export function UpdatePrompt() {
   const [show, setShow] = useState(false)
-  const [reg, setReg] = useState<ServiceWorkerRegistration | null>(null)
+  const regRef = React.useRef<ServiceWorkerRegistration | null>(null)
+  const waitingRef = React.useRef<ServiceWorker | null>(null)
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
-    navigator.serviceWorker.ready.then(r => {
-      setReg(r)
-      r.addEventListener('updatefound', () => {
-        const nw = r.installing
+    let reloaded = false
+
+    function trackWaiting(worker: ServiceWorker | null) {
+      if (!worker) return
+      waitingRef.current = worker
+      setShow(true)
+    }
+
+    navigator.serviceWorker.ready.then(reg => {
+      regRef.current = reg
+
+      // A SW may already be sitting in "waiting" from before this component mounted
+      // (e.g. an update was found while the tab was in the background).
+      if (reg.waiting) trackWaiting(reg.waiting)
+
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing
         if (!nw) return
         nw.addEventListener('statechange', () => {
-          if (nw.state === 'installed' && navigator.serviceWorker.controller) setShow(true)
+          // 'installed' + an existing controller means this is an update,
+          // not the very first install — and with skipWaiting removed from
+          // the workbox config, the new worker now genuinely stays in
+          // reg.waiting until we tell it to activate.
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) trackWaiting(reg.waiting || nw)
         })
       })
+
+      // Passive browser update-checks mostly fire on navigation. Someone who
+      // just tabs back to an already-open PWA won't trigger one on their own —
+      // so check explicitly right away, and again whenever the tab regains
+      // focus/visibility, which is exactly the moment this matters.
+      reg.update().catch(() => {})
     })
-    // Poll for updates every 10 min
-    const interval = setInterval(() => { reg?.update() }, 10 * 60 * 1000)
-    return () => clearInterval(interval)
+
+    const checkNow = () => regRef.current?.update().catch(() => {})
+    const onVisible = () => { if (document.visibilityState === 'visible') checkNow() }
+    window.addEventListener('focus', checkNow)
+    document.addEventListener('visibilitychange', onVisible)
+    const interval = setInterval(checkNow, 10 * 60 * 1000) // safety net every 10 min
+
+    // Once the new SW actually takes control, reload to pick up matching assets.
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded) return
+      reloaded = true
+      window.location.reload()
+    })
+
+    return () => {
+      window.removeEventListener('focus', checkNow)
+      document.removeEventListener('visibilitychange', onVisible)
+      clearInterval(interval)
+    }
   }, [])
+
+  function handleUpdate() {
+    waitingRef.current?.postMessage({ type: 'SKIP_WAITING' })
+    setShow(false)
+  }
 
   if (!show) return null
   return (
@@ -50,7 +95,7 @@ export function UpdatePrompt() {
         <p style={{ margin: 0, fontSize: 'var(--text-small)', fontWeight: 600, color: 'var(--text-primary)' }}>Update available</p>
         <p style={{ margin: '2px 0 0', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>Reload to get the latest version of VELA.</p>
       </div>
-      <button className="btn-gold" style={{ fontSize: 'var(--text-micro)', padding: '0.35rem 0.75rem', whiteSpace: 'nowrap' }} onClick={() => window.location.reload()}>Update</button>
+      <button className="btn-gold" style={{ fontSize: 'var(--text-micro)', padding: '0.35rem 0.75rem', whiteSpace: 'nowrap' }} onClick={handleUpdate}>Update</button>
     </div>
   )
 }
