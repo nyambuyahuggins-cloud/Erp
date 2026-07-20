@@ -33,6 +33,7 @@ export default defineConfig({
           /^\/__/,
           /\/sw\.js$/,
           /\/workbox-/,
+          /\/reset\.html$/,
           /\.netlify/,
         ],
 
