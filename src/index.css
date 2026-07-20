@@ -84,6 +84,16 @@ input, select, textarea { font-size: 16px !important; }
   --text-secondary:#c4bfd4;     /* ← new middle level */
   --text-muted:    #7a7a96;
 
+  /* Surface-scoped tokens for the Sidebar/BottomNav specifically — these let
+     a tenant's custom Sidebar Background color stay readable even if it ends
+     up a different lightness than the Page Background (see applyBranding in
+     AuthContext.tsx). Default to the same values as the global text tokens
+     so nothing changes unless a tenant actually customizes Sidebar Background. */
+  --sidebar-text:       #f0ead6;
+  --sidebar-text-muted: #7a7a96;
+  --sidebar-border:     rgba(255,255,255,0.08);
+  --sidebar-surface:    rgba(255,255,255,0.04);
+
   --border:        rgba(255,255,255,0.08);
   --border-gold:   rgba(212,168,75,0.22);
 
@@ -129,6 +139,11 @@ input, select, textarea { font-size: 16px !important; }
   --text-primary:  #1a1814;
   --text-secondary:#4a4540;     /* ← new middle level */
   --text-muted:    #7a7060;
+
+  --sidebar-text:       #1a1814;
+  --sidebar-text-muted: #7a7060;
+  --sidebar-border:     rgba(0,0,0,0.08);
+  --sidebar-surface:    rgba(0,0,0,0.025);
 
   --border:        rgba(0,0,0,0.08);
   --border-gold:   rgba(184,137,46,0.25);
@@ -434,7 +449,7 @@ select.input option { background: var(--bg-800); color: var(--text-primary); }
   display: flex; align-items: center; gap: 0.75rem;
   padding: 0.6rem 0.875rem;
   border-radius: var(--radius-sm);
-  color: var(--text-muted); cursor: pointer;
+  color: var(--sidebar-text-muted); cursor: pointer;
   transition: background var(--t-base), color var(--t-base), border-color var(--t-base);
   font-size: var(--text-small); font-weight: 500;
   text-decoration: none; background: none; border: none;
@@ -442,8 +457,8 @@ select.input option { background: var(--bg-800); color: var(--text-primary); }
   width: 100%; padding-left: calc(0.875rem - 2px);
 }
 .nav-item:hover {
-  background: var(--surface-hover);
-  color: var(--text-primary);
+  background: var(--sidebar-surface);
+  color: var(--sidebar-text);
 }
 /* Active: gold left bar — not background wash */
 .nav-item.active {

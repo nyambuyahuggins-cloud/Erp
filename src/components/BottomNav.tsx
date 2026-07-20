@@ -52,7 +52,7 @@ export default function BottomNav() {
       <nav data-bottomnav style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 40,
         background: 'var(--bg-850)',
-        borderTop: '1px solid var(--border)',
+        borderTop: '1px solid var(--sidebar-border)',
         display: 'flex', alignItems: 'stretch',
         height: 60,
         paddingBottom: 'env(safe-area-inset-bottom)',
@@ -65,7 +65,7 @@ export default function BottomNav() {
                 flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
                 justifyContent: 'center', gap: 3, background: 'none', border: 'none',
                 cursor: 'pointer', padding: '6px 0',
-                color: active ? 'var(--gold)' : 'var(--text-muted)',
+                color: active ? 'var(--gold)' : 'var(--sidebar-text-muted)',
                 transition: 'color var(--t-base)',
                 position: 'relative',
               }}>
@@ -90,7 +90,7 @@ export default function BottomNav() {
             flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
             justifyContent: 'center', gap: 3, background: 'none', border: 'none',
             cursor: 'pointer', padding: '6px 0',
-            color: sheetOpen ? 'var(--gold)' : 'var(--text-muted)',
+            color: sheetOpen ? 'var(--gold)' : 'var(--sidebar-text-muted)',
             transition: 'color var(--t-base)',
           }}>
           <MoreHorizontal size={20} />
@@ -105,14 +105,14 @@ export default function BottomNav() {
             style={{ position: 'fixed', inset: 0, zIndex: 45, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} />
           <div style={{
             position: 'fixed', bottom: 60, left: 0, right: 0, zIndex: 50,
-            background: 'var(--bg-850)', borderTop: '1px solid var(--border)',
+            background: 'var(--bg-850)', borderTop: '1px solid var(--sidebar-border)',
             borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0',
             padding: 'var(--sp-5)',
             animation: 'slideUp 0.2s var(--ease-out) both',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-4)' }}>
-              <p style={{ margin: 0, fontSize: 'var(--text-micro)', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>More</p>
-              <button onClick={() => setSheetOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 'var(--sp-1)', display: 'flex' }}>
+              <p style={{ margin: 0, fontSize: 'var(--text-micro)', fontWeight: 700, color: 'var(--sidebar-text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>More</p>
+              <button onClick={() => setSheetOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--sidebar-text-muted)', cursor: 'pointer', padding: 'var(--sp-1)', display: 'flex' }}>
                 <X size={18} />
               </button>
             </div>
@@ -124,8 +124,8 @@ export default function BottomNav() {
                     style={{
                       display: 'flex', flexDirection: 'column', alignItems: 'center',
                       gap: 'var(--sp-2)', padding: 'var(--sp-4) var(--sp-2)',
-                      background: active ? 'var(--gold-dim)' : 'var(--surface)',
-                      border: `1px solid ${active ? 'var(--border-gold)' : 'var(--border)'}`,
+                      background: active ? 'var(--gold-dim)' : 'var(--sidebar-surface)',
+                      border: `1px solid ${active ? 'var(--border-gold)' : 'var(--sidebar-border)'}`,
                       borderRadius: 'var(--radius-md)', cursor: 'pointer',
                       color: active ? 'var(--gold)' : 'var(--text-secondary)',
                       transition: 'all var(--t-base)',

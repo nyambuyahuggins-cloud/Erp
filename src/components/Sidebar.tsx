@@ -76,7 +76,7 @@ export default function Sidebar() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
       {/* LOGO */}
-      <div style={{ padding: '1.125rem 1rem 1rem', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      <div style={{ padding: '1.125rem 1rem 1rem', borderBottom: '1px solid var(--sidebar-border)', flexShrink: 0 }}>
         {logoUrl ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <img src={logoUrl} alt={appName} style={{ height: 28, maxWidth: 120, objectFit: 'contain' }} />
@@ -88,7 +88,7 @@ export default function Sidebar() {
           </div>
         )}
         {tagline && !branding?.hide_vela_branding && (
-          <p style={{ fontSize: 'var(--text-micro)', color: 'var(--text-muted)', marginTop: '2px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>{tagline}</p>
+          <p style={{ fontSize: 'var(--text-micro)', color: 'var(--sidebar-text-muted)', marginTop: '2px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>{tagline}</p>
         )}
       </div>
 
@@ -98,7 +98,7 @@ export default function Sidebar() {
       </div>
 
       {/* BOTTOM: settings + avatar */}
-      <div style={{ padding: '0.5rem', borderTop: '1px solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ padding: '0.5rem', borderTop: '1px solid var(--sidebar-border)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <NavLink item={{ icon: <Settings size={16} />, label: 'Settings', path: '/settings' }} />
         <button
           className={`nav-item ${location.pathname === '/profile' ? 'active' : ''}`}
@@ -114,10 +114,10 @@ export default function Sidebar() {
             {profile?.full_name?.charAt(0)?.toUpperCase() || '?'}
           </div>
           <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-            <p style={{ margin: 0, fontSize: 'var(--text-small)', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-small)', fontWeight: 600, color: 'var(--sidebar-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {profile?.full_name}
             </p>
-            <p style={{ margin: 0, fontSize: 'var(--text-micro)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-micro)', color: 'var(--sidebar-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {post?.title || 'Staff'}
             </p>
           </div>
@@ -131,7 +131,7 @@ export default function Sidebar() {
       {/* ── DESKTOP: always visible ──────────────────────────────── */}
       <aside className="desktop-sidebar" style={{
         width: 216, flexShrink: 0, height: '100%',
-        background: 'var(--bg-850)', borderRight: '1px solid var(--border)',
+        background: 'var(--bg-850)', borderRight: '1px solid var(--sidebar-border)',
         display: 'flex', flexDirection: 'column',
       }}>
         <SidebarContent />
@@ -144,8 +144,8 @@ export default function Sidebar() {
         style={{
           display: 'none',
           position: 'fixed', top: 10, left: 10, zIndex: 40,
-          background: 'var(--bg-850)', border: '1px solid var(--border)',
-          borderRadius: 8, padding: '0.45rem', color: 'var(--text-primary)', cursor: 'pointer',
+          background: 'var(--bg-850)', border: '1px solid var(--sidebar-border)',
+          borderRadius: 8, padding: '0.45rem', color: 'var(--sidebar-text)', cursor: 'pointer',
         }}
         className="mobile-hamburger"
       >
@@ -155,8 +155,8 @@ export default function Sidebar() {
       {mobileOpen && (
         <>
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 45 }} onClick={() => setMobileOpen(false)} />
-          <aside style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 230, zIndex: 50, background: 'var(--bg-850)', borderRight: '1px solid var(--border)' }}>
-            <button onClick={() => setMobileOpen(false)} aria-label="Close navigation menu" style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+          <aside style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 230, zIndex: 50, background: 'var(--bg-850)', borderRight: '1px solid var(--sidebar-border)' }}>
+            <button onClick={() => setMobileOpen(false)} aria-label="Close navigation menu" style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: 'var(--sidebar-text-muted)', cursor: 'pointer' }}>
               <X size={18} />
             </button>
             <SidebarContent />

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { syncEngine } from '../lib/syncEngine'
 import { parseUserAgent } from '../lib/deviceInfo'
 import type { Plan } from '../lib/planEnforcement'
+import { isLight } from '../lib/color'
 
 export interface Profile {
   id: string; tenant_id: string; full_name: string; entity_id: string | null
@@ -258,8 +259,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 function applyBranding(b: Branding) {
   const root = document.documentElement
   if (b.primary_color) root.style.setProperty('--gold', b.primary_color)
-  if (b.secondary_color) root.style.setProperty('--bg-850', b.secondary_color)
-  if (b.accent_color) root.style.setProperty('--bg-900', b.accent_color)
+
+  // Sidebar/BottomNav: scoped tokens so a custom Sidebar Background stays
+  // readable even if it ends up a different lightness than the Page Background.
+  if (b.secondary_color) {
+    root.style.setProperty('--bg-850', b.secondary_color)
+    const light = isLight(b.secondary_color)
+    root.style.setProperty('--sidebar-text', light ? '#1a1814' : '#f0ead6')
+    root.style.setProperty('--sidebar-text-muted', light ? '#7a7060' : '#7a7a96')
+    root.style.setProperty('--sidebar-border', light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)')
+    root.style.setProperty('--sidebar-surface', light ? 'rgba(0,0,0,0.025)' : 'rgba(255,255,255,0.04)')
+  }
+
+  // Header + page content share --bg-900. Everything that reads the global
+  // text/border/surface tokens sits on this surface, so those tokens must be
+  // recomputed to match whatever color the tenant picked here — otherwise a
+  // light Page Background paired with the app's default light-on-dark text
+  // renders as barely-visible ghost text (exactly what happens if this block
+  // only touches --bg-900 and leaves --text-primary etc. alone).
+  if (b.accent_color) {
+    root.style.setProperty('--bg-900', b.accent_color)
+    const light = isLight(b.accent_color)
+    root.style.setProperty('--text-primary', light ? '#1a1814' : '#f0ead6')
+    root.style.setProperty('--text-secondary', light ? '#4a4540' : '#c4bfd4')
+    root.style.setProperty('--text-muted', light ? '#7a7060' : '#7a7a96')
+    root.style.setProperty('--border', light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)')
+    root.style.setProperty('--surface', light ? 'rgba(0,0,0,0.025)' : 'rgba(255,255,255,0.04)')
+    root.style.setProperty('--surface-hover', light ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.07)')
+    root.style.setProperty('--surface-active', light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.10)')
+    root.style.setProperty('--input-bg', light ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)')
+  }
 }
 
 export function useAuth() {
