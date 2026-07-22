@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { syncEngine } from '../lib/syncEngine'
 import { parseUserAgent } from '../lib/deviceInfo'
 import type { Plan } from '../lib/planEnforcement'
-import { isLight } from '../lib/color'
+import { isLight, lighten, darken, hexToRgba } from '../lib/color'
 
 export interface Profile {
   id: string; tenant_id: string; full_name: string; entity_id: string | null
@@ -258,7 +258,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 function applyBranding(b: Branding) {
   const root = document.documentElement
-  if (b.primary_color) root.style.setProperty('--gold', b.primary_color)
+
+  // Every other "gold-*" token (the gradient's dark stop, focus rings, dim
+  // badge backgrounds, etc.) was previously left at its fixed default hue —
+  // so picking e.g. Crimson only changed the gradient's first stop, and the
+  // rest of the app (buttons, active nav state, focus rings) stayed gold/
+  // orange regardless of what a tenant picked. Deriving the whole family
+  // from primary_color fixes that everywhere at once.
+  if (b.primary_color) {
+    const primary = b.primary_color
+    root.style.setProperty('--gold', primary)
+    root.style.setProperty('--gold-light', lighten(primary, 0.18))
+    root.style.setProperty('--gold-dark', darken(primary, 0.2))
+    root.style.setProperty('--gold-dim', hexToRgba(primary, 0.08))
+    root.style.setProperty('--gold-ring', hexToRgba(primary, 0.18))
+    root.style.setProperty('--gold-wash', hexToRgba(primary, 0.05))
+    root.style.setProperty('--gold-soft', hexToRgba(primary, 0.11))
+    root.style.setProperty('--gold-border', hexToRgba(primary, 0.28))
+    root.style.setProperty('--gold-strong', hexToRgba(primary, 0.4))
+    root.style.setProperty('--border-gold', hexToRgba(primary, 0.25))
+    // Button text: whatever primary_color a tenant picks, the label on top
+    // of it needs to stay readable — a dark accent needs light text, same
+    // as anywhere else we compute contrast in this function.
+    root.style.setProperty('--gold-text', isLight(primary) ? '#1a1814' : '#0b0b1e')
+  }
 
   // Sidebar/BottomNav: scoped tokens so a custom Sidebar Background stays
   // readable even if it ends up a different lightness than the Page Background.

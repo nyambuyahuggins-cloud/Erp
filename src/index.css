@@ -75,6 +75,7 @@ input, select, textarea { font-size: 16px !important; }
   --gold-soft:     rgba(212,168,75,0.11);   /* badge/chip backgrounds */
   --gold-border:   rgba(212,168,75,0.28);   /* visible but soft borders */
   --gold-strong:   rgba(212,168,75,0.4);    /* emphasized borders/dividers */
+  --gold-text:     #0b0b1e;                 /* text/icon color on top of gold buttons */
 
   --bg-900:        #0b0b1e;
   --bg-850:        #0f0f2a;
@@ -103,6 +104,7 @@ input, select, textarea { font-size: 16px !important; }
   --input-bg:      rgba(255,255,255,0.05);
 
   --modal-bg:      rgba(0,0,0,0.75);
+  --modal-card-bg: #141430;
 
   --danger:  #f87171;
   --success: #4ade80;
@@ -131,6 +133,7 @@ input, select, textarea { font-size: 16px !important; }
   --gold-soft:     rgba(184,137,46,0.11);
   --gold-border:   rgba(184,137,46,0.3);
   --gold-strong:   rgba(184,137,46,0.42);
+  --gold-text:     #0b0b1e;
 
   --bg-900:        #f5f3ef;
   --bg-850:        #ffffff;
@@ -154,6 +157,7 @@ input, select, textarea { font-size: 16px !important; }
   --input-bg:      rgba(0,0,0,0.03);
 
   --modal-bg:      rgba(0,0,0,0.5);
+  --modal-card-bg: #ffffff;
 
   --danger:  #dc2626;
   --success: #16a34a;
@@ -246,7 +250,7 @@ input[type="checkbox"], input[type="radio"], input[type="range"] {
 /* ── BUTTONS ────────────────────────────────────────────────────────── */
 .btn-gold {
   background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
-  color: #0b0b1e;
+  color: var(--gold-text);
   font-weight: 600;
   border-radius: var(--radius-md);
   padding: 0.625rem 1.25rem;
@@ -258,7 +262,7 @@ input[type="checkbox"], input[type="radio"], input[type="range"] {
   display: inline-flex; align-items: center; gap: 6px;
   user-select: none;
 }
-.btn-gold:hover  { opacity: 0.9; box-shadow: 0 2px 12px rgba(212,168,75,0.25); }
+.btn-gold:hover  { opacity: 0.9; box-shadow: 0 2px 12px var(--gold-border); }
 .btn-gold:active { transform: scale(0.97); opacity: 1; box-shadow: none; }
 .btn-gold:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
@@ -338,6 +342,7 @@ select.input option { background: var(--bg-800); color: var(--text-primary); }
   animation: fadeInUp 0.18s var(--ease-out) both;
 }
 .modal-backdrop .card {
+  background: var(--modal-card-bg);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-3);
   border-color: var(--border-gold);
@@ -471,7 +476,7 @@ select.input option { background: var(--bg-800); color: var(--text-primary); }
 /* ── SPINNER ────────────────────────────────────────────────────────── */
 .spinner {
   width: 32px; height: 32px;
-  border: 2px solid rgba(212,168,75,0.15);
+  border: 2px solid var(--gold-ring);
   border-top-color: var(--gold);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;

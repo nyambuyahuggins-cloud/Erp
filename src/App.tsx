@@ -79,7 +79,7 @@ function AppRoutes() {
       <ScrollManager />
       <Routes>
         {/* Public */}
-        <Route path="/"         element={<MarketingPage />} />
+        <Route path="/"         element={session ? <Navigate to={postAuthDest} replace /> : <MarketingPage />} />
         <Route path="/login"    element={session ? <Navigate to={postAuthDest} replace /> : <LoginPage />} />
         <Route path="/register" element={session ? <Navigate to={postAuthDest} replace /> : <RegisterPage />} />
         <Route path="/forgot-password" element={session ? <Navigate to={postAuthDest} replace /> : <ForgotPasswordPage />} />
