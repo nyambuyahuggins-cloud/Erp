@@ -280,7 +280,7 @@ function applyBranding(b: Branding) {
     // Button text: whatever primary_color a tenant picks, the label on top
     // of it needs to stay readable — a dark accent needs light text, same
     // as anywhere else we compute contrast in this function.
-    root.style.setProperty('--gold-text', isLight(primary) ? '#1a1814' : '#0b0b1e')
+    root.style.setProperty('--gold-text', isLight(primary) ? '#1a1814' : '#f0ead6')
   }
 
   // Sidebar/BottomNav: scoped tokens so a custom Sidebar Background stays
