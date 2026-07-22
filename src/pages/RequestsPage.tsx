@@ -351,7 +351,8 @@ export default function RequestsPage() {
       <button className="btn-gold" onClick={() => setShowModal(true)} style={{ gap: '0.5rem' }}>
         <Plus size={16} /> Submit Request
       </button>
-    }>\n      {staleCount > 0 && (
+    }>
+      {staleCount > 0 && (
         <div style={{ background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-small)', color: '#f97316' }}>
           <AlertCircle size={14} /> {staleCount} request{staleCount > 1 ? 's' : ''} have been pending for 14+ days and may need attention
         </div>

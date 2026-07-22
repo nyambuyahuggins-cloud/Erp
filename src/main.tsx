@@ -2,11 +2,20 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import { ThemeProvider } from './contexts/ThemeContext.tsx'
+import { applyCachedBranding } from './lib/branding.ts'
 import './index.css'
 
 // Apply saved theme before render to avoid flash
 const saved = (() => { try { return localStorage.getItem('vela-theme') || 'dark' } catch { return 'dark' } })()
 document.documentElement.setAttribute('data-theme', saved)
+
+// Same idea for branding: paint with whatever colors were last resolved for
+// this device, before AuthContext's Supabase fetch has a chance to run.
+// Without this, the loading spinner shown on every cold start rendered
+// against the hardcoded default navy background regardless of what a
+// tenant had actually configured, then "jumped" to the real color once
+// branding loaded a moment later.
+applyCachedBranding()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -12,6 +12,7 @@ import { getPlanLimits } from '../lib/planEnforcement'
 import type { Plan } from '../lib/planEnforcement'
 import { isSubdomainAvailable, ROOT_DOMAIN } from '../lib/subdomain'
 import TabBar from '../components/TabBar'
+import { isLight } from '../lib/color'
 
 // ── Add-on definitions with 30% margin baked in ───────────────────
 // Costs are actual cost to operator; price = Math.round(cost * 1.30)
@@ -641,7 +642,7 @@ function GroupThresholdsForm({ profile, tenant, canModify }: any) {
   const da  = parseFloat(dualApproval) || 999
 
   return (
-    <div style={{ maxWidth: 560 }}>
+    <div>
       <p style={{ margin: '0 0 1.5rem', fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>
         Configure the two approval thresholds that govern how requests are routed across your group.
         {!canModify && <span style={{ color: 'var(--warning)' }}> View only — only Executives can modify these settings.</span>}
@@ -759,7 +760,7 @@ function EnterpriseAddonsTab({ profile, tenant }: any) {
   const monthlyTotal = ADDON_CATALOG.filter(a => activeAddons.has(a.key)).reduce((s, a) => s + a.price, 0)
 
   return (
-    <div style={{ maxWidth: 760 }}>
+    <div>
       {/* Running total */}
       <div className="card" style={{ marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
@@ -921,7 +922,7 @@ function WhiteLabelTab({ profile, tenant, branding, refreshBranding }: any) {
   const holdingName = entities.find(e => e.entity_type === 'holding')?.name || tenant?.name || 'Group'
 
   return (
-    <div style={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
       {/* Entity selector */}
       <div className="card">
@@ -1031,9 +1032,9 @@ function WhiteLabelTab({ profile, tenant, branding, refreshBranding }: any) {
             </span>
           </div>
           <div style={{ background: form.accent_color, padding: '0.875rem 1rem' }}>
-            <p style={{ margin: 0, fontSize: 'var(--text-micro)', color: '#94a3b8' }}>{form.tagline || 'Your tagline here'}</p>
+            <p style={{ margin: 0, fontSize: 'var(--text-micro)', color: isLight(form.accent_color) ? '#7a7060' : '#94a3b8' }}>{form.tagline || 'Your tagline here'}</p>
             <div style={{ marginTop: '0.75rem', display: 'flex', gap: 6 }}>
-              <div style={{ background: form.primary_color, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 'var(--text-micro)', fontWeight: 700, color: '#0f0f23' }}>Button</div>
+              <div style={{ background: form.primary_color, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 'var(--text-micro)', fontWeight: 700, color: isLight(form.primary_color) ? '#1a1814' : '#f0ead6' }}>Button</div>
               <div style={{ background: `${form.primary_color}18`, border: `1px solid ${form.primary_color}40`, borderRadius: 6, padding: '0.3rem 0.75rem', fontSize: 'var(--text-micro)', color: form.primary_color }}>Outline</div>
             </div>
           </div>
@@ -1069,7 +1070,7 @@ function APIKeysTab({ profile, tenant }: any) {
   if (!isEnterprise) return <div className="card" style={{ maxWidth: 480 }}><p style={{ color: 'var(--text-muted)' }}>API access requires Enterprise plan.</p></div>
 
   return (
-    <div style={{ maxWidth: 660 }}>
+    <div>
       {newKey && (
         <div className="card" style={{ marginBottom: '1.25rem', borderColor: 'var(--success-dim)', background: 'var(--success-dim)' }}>
           <p style={{ margin: '0 0 0.5rem', fontWeight: 600, color: 'var(--success)', fontSize: 'var(--text-small)' }}>⚡ Copy now — never shown again</p>
@@ -1133,7 +1134,7 @@ function SubscriptionTab({ tenant, navigate, profile, isExec }: any) {
   const info = descriptions[plan]
 
   return (
-    <div style={{ maxWidth: 520, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div className="card" style={{ borderColor: 'var(--gold)' }}>
         <p style={{ margin: '0 0 0.25rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Current Plan</p>
         <p style={{ margin: '0 0 0.25rem', fontFamily: "'Playfair Display', serif", fontSize: 'var(--text-h2)', fontWeight: 700, color: 'var(--gold)', textTransform: 'capitalize' }}>{plan}</p>

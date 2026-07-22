@@ -11,6 +11,7 @@ import {
 import { getPlanLimits } from '../lib/planEnforcement'
 import type { Plan } from '../lib/planEnforcement'
 import TabBar from '../components/TabBar'
+import { isLight } from '../lib/color'
 
 const TABS = ['Notifications', 'Display', 'Security'] as const
 type SettingsTab = typeof TABS[number]
@@ -475,7 +476,7 @@ function WhiteLabelTab({ profile, tenant, branding, refreshBranding }: any) {
         {/* Live preview */}
         <div style={{ padding: '0.75rem', borderRadius: 8, border: '1px solid var(--border)', background: form.secondary_color, display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 28, height: 28, borderRadius: '50%', background: form.primary_color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Shield size={14} style={{ color: '#0f0f23' }} />
+            <Shield size={14} style={{ color: isLight(form.primary_color) ? '#1a1814' : '#f0ead6' }} />
           </div>
           <span style={{ color: form.primary_color, fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: 'var(--text-body)' }}>{form.app_name || 'Your App'}</span>
         </div>
