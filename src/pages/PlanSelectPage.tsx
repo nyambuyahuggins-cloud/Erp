@@ -146,8 +146,8 @@ export default function PlanSelectPage() {
                   disabled={saving !== null || isCurrent}
                   style={{
                     width: '100%', padding: '0.8rem', borderRadius: 10, border: plan.featured ? 'none' : '1px solid var(--border)',
-                    background: isCurrent ? 'var(--success-dim)' : plan.featured ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : 'transparent',
-                    color: isCurrent ? 'var(--success)' : plan.featured ? '#0f0f23' : 'var(--text-primary)',
+                    background: isCurrent ? 'var(--success-dim)' : plan.featured ? 'var(--gold)' : 'transparent',
+                    color: isCurrent ? 'var(--success)' : plan.featured ? 'var(--gold-text)' : 'var(--text-primary)',
                     fontWeight: 700, fontSize: 'var(--text-body)', cursor: isCurrent ? 'default' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                   }}>

@@ -46,6 +46,17 @@ export default function RegisterPage() {
       setLoading(false)
       return
     }
+    // Supabase's anti-enumeration behavior: signUp() for an email that's
+    // already registered returns success with no error and no session — but
+    // an empty identities array is the documented signal that nothing was
+    // actually sent. Without this check, someone re-using an existing email
+    // sees the same "check your email" screen as a real signup and never
+    // finds out why nothing arrives.
+    if (data.user && data.user.identities && data.user.identities.length === 0) {
+      setError('An account with this email already exists. Try logging in, or use "Forgot password" if you need to reset it.')
+      setLoading(false)
+      return
+    }
     if (data.session) {
       // Email confirmation disabled — session is active immediately
       navigate('/onboarding/plan')

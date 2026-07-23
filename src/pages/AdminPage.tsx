@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react'
 import Layout from '../components/Layout'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
-import { supabase } from '../lib/supabase'
+import { supabase, SUPABASE_URL } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import {
   Shield, Key, Layers, Globe, Sun, Moon, Upload, Plus, Trash2,
@@ -123,7 +123,8 @@ function UsersTab({ profile, tenant }: any) {
     setShowModal(true)
   }
 
-  const [inviteResult, setInviteResult] = useState<{ email: string; tempPw: string } | null>(null)
+  const [inviteResult, setInviteResult] = useState<{ email: string } | null>(null)
+  const [inviteError, setInviteError] = useState<string | null>(null)
 
   async function saveUser(e: React.FormEvent) {
     e.preventDefault(); setSubmitting(true)
@@ -136,48 +137,39 @@ function UsersTab({ profile, tenant }: any) {
       return
     }
 
-    // Generate a temporary password the admin can share
-    const tempPw = 'Vela@' + Math.random().toString(36).slice(2, 8).toUpperCase() + '!'
+    setInviteError(null)
 
-    // Create the auth user — trigger handle_new_user will create the profile
-    const { data: signupData, error: signupErr } = await supabase.auth.signUp({
-      email: form.email,
-      password: tempPw,
-      options: {
-        data: {
-          full_name: form.full_name,
-          phone: form.phone,
-          tenant_id: profile.tenant_id,
-          entity_id: form.entity_id,
-          post_id: form.post_id,
-        },
-        emailRedirectTo: `${window.location.origin}/login`,
-      }
+    // Real admin-invite path — runs server-side with the service-role Admin
+    // API, so it always sends a genuine invite email and never silently
+    // no-ops the way supabase.auth.signUp() does for an already-registered
+    // address. See supabase/functions/invite-user for why this had to move
+    // off the client.
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/invite-user`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({
+        email: form.email,
+        full_name: form.full_name,
+        phone: form.phone,
+        entity_id: form.entity_id,
+        post_id: form.post_id,
+      }),
     })
+    const result = await res.json()
 
-    if (signupErr) {
-      alert('Failed to create user: ' + signupErr.message)
+    if (!res.ok || result.error) {
+      setInviteError(result.error || 'Failed to send invite')
       setSubmitting(false)
       return
     }
 
-    // Ensure profile row has correct tenant (trigger should handle this, belt+braces)
-    if (signupData.user) {
-      await supabase.from('user_profiles').upsert({
-        id: signupData.user.id,
-        email: form.email,
-        full_name: form.full_name,
-        phone: form.phone,
-        tenant_id: profile.tenant_id,
-        entity_id: form.entity_id || null,
-        post_id: form.post_id || null,
-        is_active: true
-      }, { onConflict: 'id' })
-    }
-
     setShowModal(false)
     setEditUser(null)
-    setInviteResult({ email: form.email, tempPw })
+    setInviteResult({ email: form.email })
     await load()
     setSubmitting(false)
   }
@@ -295,27 +287,23 @@ function UsersTab({ profile, tenant }: any) {
       {inviteResult && (
         <div className="modal-backdrop" onClick={() => setInviteResult(null)}>
           <div className="card" style={{ width: '100%', maxWidth: 400, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✅</div>
-            <h3 style={{ fontFamily: "'Playfair Display',serif", margin: '0 0 0.5rem' }}>User Created</h3>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📧</div>
+            <h3 style={{ fontFamily: "'Playfair Display',serif", margin: '0 0 0.5rem' }}>Invite sent</h3>
             <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)', marginBottom: '1.25rem' }}>
-              Share these credentials securely with <strong>{inviteResult.email}</strong>
+              An invite email was sent to <strong>{inviteResult.email}</strong>. They'll set their own password by clicking the link in it — no credentials for you to share.
             </p>
-            <div style={{ background: 'var(--bg-900)', borderRadius: 8, padding: '1rem', marginBottom: '1.25rem', textAlign: 'left' }}>
-              <p style={{ margin: '0 0 0.5rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>EMAIL</p>
-              <p style={{ margin: '0 0 1rem', fontFamily: "'JetBrains Mono',monospace", fontSize: 'var(--text-small)' }}>{inviteResult.email}</p>
-              <p style={{ margin: '0 0 0.5rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>TEMPORARY PASSWORD</p>
-              <p style={{ margin: 0, fontFamily: "'JetBrains Mono',monospace", fontSize: 'var(--text-body)', color: 'var(--gold)', fontWeight: 700 }}>{inviteResult.tempPw}</p>
-            </div>
-            <p style={{ fontSize: 'var(--text-micro)', color: 'var(--info)', marginBottom: '0.75rem' }}>
-              📧 A confirmation email was just sent to {inviteResult.email}. They must click it before this password will work — otherwise sign-in will fail with "email not confirmed."
-            </p>
-            <p style={{ fontSize: 'var(--text-micro)', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-              The user should change this password after first login via Profile → Security.
-            </p>
-            <button className="btn-gold" style={{ width: '100%' }} onClick={() => {
-              navigator.clipboard?.writeText(`Email: ${inviteResult.email}\nPassword: ${inviteResult.tempPw}`)
-              setInviteResult(null)
-            }}>Copy & Close</button>
+            <button className="btn-gold" style={{ width: '100%' }} onClick={() => setInviteResult(null)}>Done</button>
+          </div>
+        </div>
+      )}
+
+      {inviteError && (
+        <div className="modal-backdrop" onClick={() => setInviteError(null)}>
+          <div className="card" style={{ width: '100%', maxWidth: 400, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>⚠️</div>
+            <h3 style={{ fontFamily: "'Playfair Display',serif", margin: '0 0 0.5rem' }}>Couldn't send invite</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)', marginBottom: '1.25rem' }}>{inviteError}</p>
+            <button className="btn-gold" style={{ width: '100%' }} onClick={() => setInviteError(null)}>Close</button>
           </div>
         </div>
       )}
@@ -803,8 +791,8 @@ function EnterpriseAddonsTab({ profile, tenant }: any) {
                   disabled={isLoading}
                   style={{
                     width: '100%', padding: '0.5rem', borderRadius: 8, cursor: 'pointer',
-                    background: isOn ? 'var(--danger-dim)' : 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
-                    color: isOn ? 'var(--danger)' : '#0f0f23',
+                    background: isOn ? 'var(--danger-dim)' : 'var(--gold)',
+                    color: isOn ? 'var(--danger)' : 'var(--gold-text)',
                     border: isOn ? '1px solid var(--danger-dim)' : 'none',
                     fontWeight: 600, fontSize: 'var(--text-small)',
                     transition: 'all 0.15s'
