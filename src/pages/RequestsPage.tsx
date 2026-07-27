@@ -585,7 +585,10 @@ export default function RequestsPage() {
         <div className="modal-backdrop" onClick={() => setActionModal(null)} role="dialog" aria-modal="true" aria-label="Review request">
           <FocusTrap>
           <div className="card" style={{ width: '100%', maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'var(--text-lead)', margin: '0 0 1.25rem' }}>Review Request</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'var(--text-lead)', margin: 0 }}>Review Request</h3>
+              <button onClick={() => setActionModal(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
             <div style={{ background: 'var(--bg-800)', borderRadius: 8, padding: '0.875rem', marginBottom: '1rem' }}>
               <p style={{ margin: '0 0 0.25rem', fontWeight: 600 }}>{actionModal.ref}</p>
               <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>USD {parseFloat(actionModal.amount).toFixed(2)} · {actionModal.category}</p>
@@ -634,7 +637,6 @@ export default function RequestsPage() {
               <textarea className="input" rows={3} value={actionNote} onChange={e => setActionNote(e.target.value)} placeholder="Add a note..." />
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              <button className="btn-ghost" onClick={() => setActionModal(null)}>Cancel</button>
               {(() => {
                 const routing = computeRouting({
                   amount: parseFloat(actionModal.amount), category: actionModal.category, recurring: actionModal.recurring, entityId: actionModal.entity_id,
@@ -644,21 +646,32 @@ export default function RequestsPage() {
                   routing, userId: profile!.id, userRank: effectiveRank, userCanApprove: !!effectiveCanApprove, userCanEndorse: !!effectiveCanEndorse,
                   existingApprovals: actionModal.request_approvals || [],
                 })
-                return (
-                  <>
-                    {mayEndorse && actionModal.status === 'pending' && (
+                const canReject = actionNote.trim().length >= 20
+                // Exactly two buttons: an endorser only ever sees Reject/Endorse,
+                // an approver only ever sees Reject/Approve — never a third
+                // option stacked alongside. Endorse takes priority when both
+                // happen to apply, since an endorsement step (department
+                // manager sign-off before it reaches an executive for final
+                // approval) is what "pending" means for this rank; approval
+                // is the separate, later stage.
+                const showEndorse = mayEndorse && actionModal.status === 'pending'
+                if (showEndorse) {
+                  return (
+                    <>
+                      <button style={{ background: 'var(--danger-dim)', color: 'var(--danger)', border: '1px solid var(--danger-dim)', borderRadius: 8, padding: '0.625rem 1rem', cursor: canReject ? 'pointer' : 'not-allowed', fontSize: 'var(--text-small)', opacity: canReject ? 1 : 0.5 }} onClick={() => handleAction('rejected')} disabled={actionLoading || !canReject}>Reject</button>
                       <button className="btn-ghost" style={{ borderColor: 'var(--info)', color: 'var(--info)' }} onClick={() => handleAction('endorsed')} disabled={actionLoading}>Endorse</button>
-                    )}
-                    {mayApprove ? (
-                      <>
-                        <button style={{ background: 'var(--danger-dim)', color: 'var(--danger)', border: '1px solid var(--danger-dim)', borderRadius: 8, padding: '0.625rem 1rem', cursor: 'pointer', fontSize: 'var(--text-small)' }} onClick={() => handleAction('rejected')} disabled={actionLoading}>Reject</button>
-                        <button className="btn-gold" onClick={() => handleAction('approved')} disabled={actionLoading}>Approve</button>
-                      </>
-                    ) : reason ? (
-                      <p style={{ margin: 0, fontSize: 'var(--text-micro)', color: 'var(--text-muted)', alignSelf: 'center' }}>{reason}</p>
-                    ) : null}
-                  </>
-                )
+                    </>
+                  )
+                }
+                if (mayApprove) {
+                  return (
+                    <>
+                      <button style={{ background: 'var(--danger-dim)', color: 'var(--danger)', border: '1px solid var(--danger-dim)', borderRadius: 8, padding: '0.625rem 1rem', cursor: canReject ? 'pointer' : 'not-allowed', fontSize: 'var(--text-small)', opacity: canReject ? 1 : 0.5 }} onClick={() => handleAction('rejected')} disabled={actionLoading || !canReject}>Reject</button>
+                      <button className="btn-gold" onClick={() => handleAction('approved')} disabled={actionLoading}>Approve</button>
+                    </>
+                  )
+                }
+                return reason ? <p style={{ margin: 0, fontSize: 'var(--text-micro)', color: 'var(--text-muted)', alignSelf: 'center' }}>{reason}</p> : null
               })()}
             </div>
           </div>

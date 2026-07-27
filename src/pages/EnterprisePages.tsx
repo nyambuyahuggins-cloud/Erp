@@ -137,7 +137,7 @@ export function APIKeysPage() {
               <div>
                 <label style={{ display: 'block', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Scopes</label>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  {['read', 'write', 'payroll', 'inventory', 'reporting'].map(scope => (
+                  {['read', 'write', 'inventory', 'reporting'].map(scope => (
                     <label key={scope} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 'var(--text-small)' }}>
                       <input type="checkbox" checked={form.scopes.includes(scope)}
                         onChange={e => setForm({ ...form, scopes: e.target.checked ? [...form.scopes, scope] : form.scopes.filter(s => s !== scope) })} />
@@ -183,8 +183,6 @@ export function IntegrationsPage() {
   }
 
   const typeConfig: Record<string, { label: string; description: string; fromTable: string }> = {
-    payroll_sync: { label: 'Payroll Real-Time Sync', description: 'Full real-time payroll synchronisation. Connect your external payroll provider.', fromTable: 'enterprise' },
-    zimra_autofiling: { label: 'ZIMRA Auto-Filing', description: 'Automated ZIMRA VAT and tax submissions. Replace manual CSV exports.', fromTable: 'enterprise' },
     inventory_bom: { label: 'Bill of Materials (BOM)', description: 'Multi-level BOM management for manufacturing and assembly.', fromTable: 'enterprise' },
     inventory_mrp: { label: 'Material Requirements Planning', description: 'Automated procurement planning based on demand forecasts.', fromTable: 'enterprise' },
     reporting_powerbi: { label: 'Power BI Connector', description: 'Push VELA data to Microsoft Power BI for custom dashboards.', fromTable: 'enterprise' },
@@ -267,7 +265,6 @@ export function ReportsPage() {
   const REPORT_TYPES = [
     { value: 'consolidated_pl', label: 'Consolidated P&L' },
     { value: 'entity_summary', label: 'Entity Summary' },
-    { value: 'payroll', label: 'Payroll Report' },
     { value: 'inventory', label: 'Inventory Report' },
     { value: 'audit', label: 'Audit Log Export' },
   ]

@@ -90,7 +90,7 @@ export default function LoginPage() {
                 : 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
               marginBottom: '1rem'
             }}>
-              <Shield size={24} color="#0f0f23" />
+              <Shield size={24} color="var(--gold-text)" />
             </div>
           )}
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
@@ -181,7 +181,7 @@ export default function LoginPage() {
             </div>
 
             <button type="submit" className="btn-gold w-full" disabled={loading} style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              {loading ? <><div style={{ width: 14, height: 14, border: '2px solid rgba(0,0,0,0.3)', borderTopColor: '#0f0f23', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> Signing in...</> : 'Sign in'}
+              {loading ? <><div style={{ width: 14, height: 14, border: '2px solid rgba(0,0,0,0.3)', borderTopColor: 'var(--gold-text)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> Signing in...</> : 'Sign in'}
             </button>
           </form>
 

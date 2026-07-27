@@ -52,7 +52,7 @@ export default function SettingsPage() {
 /* ── NOTIFICATIONS TAB ────────────────────────────────────────────── */
 function NotificationsTab({ profile }: any) {
   const [prefs, setPrefs] = useState({
-    email_approvals: true, email_rejections: true, email_payroll: false,
+    email_approvals: true, email_rejections: true,
     inapp_approvals: true, inapp_requests: true, inapp_lowstock: true,
     sms_approvals: false, sms_urgent: false,
   })
@@ -74,7 +74,6 @@ function NotificationsTab({ profile }: any) {
       items: [
         { key: 'email_approvals' as PrefKey, label: 'Request approved', desc: 'Get an email when your request is approved' },
         { key: 'email_rejections' as PrefKey, label: 'Request rejected', desc: 'Get an email when your request is rejected' },
-        { key: 'email_payroll' as PrefKey, label: 'Payroll run completed', desc: 'Get an email when a payroll run is finalised' },
       ]
     },
     {
@@ -240,7 +239,7 @@ function ProfileTab({ profile, post, tenant, refreshProfile }: any) {
     <div style={{ maxWidth: 500, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       {/* Avatar card */}
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-        <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-h3)', fontWeight: 700, color: '#0f0f23', flexShrink: 0 }}>
+        <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-h3)', fontWeight: 700, color: 'var(--gold-text)', flexShrink: 0 }}>
           {profile?.full_name?.charAt(0)}
         </div>
         <div>
@@ -541,7 +540,6 @@ function APITab({ profile, tenant }: any) {
   )
 
   const integrationLabels: Record<string, string> = {
-    payroll_sync: 'Payroll Real-Time Sync', zimra_autofiling: 'ZIMRA Auto-Filing',
     inventory_bom: 'Bill of Materials', inventory_mrp: 'MRP Planning',
     reporting_powerbi: 'Power BI Connector', reporting_custom: 'Custom Reports',
     rest_api: 'REST API Access', webhook_outbound: 'Outgoing Webhooks'
@@ -568,7 +566,7 @@ function APITab({ profile, tenant }: any) {
             <div>
               <label className="form-label">Scopes</label>
               <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                {['read', 'write', 'payroll', 'inventory', 'reporting'].map(s => (
+                {['read', 'write', 'inventory', 'reporting'].map(s => (
                   <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--text-small)', cursor: 'pointer' }}>
                     <input type="checkbox" checked={keyForm.scopes.includes(s)} onChange={e => setKeyForm({ ...keyForm, scopes: e.target.checked ? [...keyForm.scopes, s] : keyForm.scopes.filter(x => x !== s) })} />
                     {s}

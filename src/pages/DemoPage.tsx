@@ -127,7 +127,7 @@ export default function DemoPage() {
         {/* Footer note */}
         <div style={{ textAlign: 'center' }}>
           <p style={{ fontSize: 'var(--text-micro)', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            All data is fictional and resets automatically every 24 hours. You can do everything — approve requests, log fleet trips, run payroll.
+            All data is fictional and resets automatically every 24 hours. You can do everything — approve requests, manage leave, track compliance.
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem', flexWrap: 'wrap' }}>
             <button onClick={() => navigate('/register')} className="btn-gold" style={{ fontSize: 'var(--text-small)' }}>

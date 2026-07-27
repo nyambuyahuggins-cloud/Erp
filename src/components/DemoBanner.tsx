@@ -53,7 +53,7 @@ export default function DemoBanner() {
         <button
           onClick={() => navigate('/register')}
           style={{
-            background: 'var(--gold)', color: '#0f0f23', fontWeight: 700, border: 'none',
+            background: 'var(--gold)', color: 'var(--gold-text)', fontWeight: 700, border: 'none',
             borderRadius: 6, padding: '0.3rem 0.875rem', cursor: 'pointer',
             fontSize: 'var(--text-micro)', whiteSpace: 'nowrap',
           }}

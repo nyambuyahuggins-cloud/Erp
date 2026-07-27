@@ -175,7 +175,7 @@ export default function EntityContextBar() {
               Resets in <strong style={{ color: 'var(--gold)' }}>{fmt(countdown)}</strong>
             </span>
             <button onClick={() => navigate('/register')}
-              style={{ background: 'var(--gold)', color: '#0f0f23', fontWeight: 700, border: 'none', borderRadius: 6, padding: '0.25rem 0.75rem', cursor: 'pointer', fontSize: 'var(--text-micro)' }}>
+              style={{ background: 'var(--gold)', color: 'var(--gold-text)', fontWeight: 700, border: 'none', borderRadius: 6, padding: '0.25rem 0.75rem', cursor: 'pointer', fontSize: 'var(--text-micro)' }}>
               Start Free →
             </button>
           </div>
@@ -250,10 +250,10 @@ export default function EntityContextBar() {
               <>
                 <div style={{ position: 'fixed', inset: 0, zIndex: 30 }} onClick={() => setShowDropdown(false)} />
                 <div style={{
-                  position: 'absolute', top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)', zIndex: 31,
+                  position: 'fixed', top: 58, left: '50%', transform: 'translateX(-50%)', zIndex: 31,
                   background: 'var(--bg-850)', border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-lg)', padding: 'var(--sp-2)',
-                  minWidth: 240, boxShadow: 'var(--shadow-3)',
+                  width: 240, maxWidth: 'calc(100vw - 2rem)', boxShadow: 'var(--shadow-3)',
                   animation: 'fadeInUp 0.15s var(--ease-out) both',
                 }}>
                   <p style={{ margin: '0.25rem 0.75rem 0.5rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Switch entity</p>

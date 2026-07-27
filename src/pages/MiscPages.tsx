@@ -551,7 +551,7 @@ export function ProfilePage() {
       <div style={{ maxWidth: 520, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         {/* Avatar */}
         <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-h3)', fontWeight: 700, color: '#0f0f23', flexShrink: 0 }}>
+          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-h3)', fontWeight: 700, color: 'var(--gold-text)', flexShrink: 0 }}>
             {profile?.full_name?.charAt(0)}
           </div>
           <div>

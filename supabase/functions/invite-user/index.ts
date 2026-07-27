@@ -56,7 +56,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerProfile, error: profileErr } = await admin
       .from('user_profiles')
-      .select('tenant_id, post_id, hierarchy_levels!post_id(rank, is_it_admin)')
+      .select('tenant_id, post_id, posts!post_id(level_id, hierarchy_levels!level_id(rank, is_it_admin))')
       .eq('id', userData.user.id)
       .single()
 
@@ -64,7 +64,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Could not resolve caller profile' }, 403)
     }
 
-    const level = callerProfile.hierarchy_levels as any
+    const level = (callerProfile.posts as any)?.hierarchy_levels as any
     const isExec = level?.rank <= 1
     const isITAdmin = level?.is_it_admin || isExec
     if (!isITAdmin) {
@@ -81,7 +81,7 @@ Deno.serve(async (req: Request) => {
     // entity_id from another tenant would let someone provision a user into
     // a company they have no business touching.
     const { data: entity } = await admin.from('entities').select('id').eq('id', body.entity_id).eq('tenant_id', callerProfile.tenant_id).maybeSingle()
-    const { data: post } = await admin.from('hierarchy_levels').select('id').eq('id', body.post_id).eq('tenant_id', callerProfile.tenant_id).maybeSingle()
+    const { data: post } = await admin.from('posts').select('id').eq('id', body.post_id).eq('tenant_id', callerProfile.tenant_id).maybeSingle()
     if (!entity || !post) {
       return json({ error: 'Entity or post does not belong to your organization' }, 403)
     }

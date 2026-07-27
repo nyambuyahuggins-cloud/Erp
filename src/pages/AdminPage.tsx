@@ -6,7 +6,7 @@ import { supabase, SUPABASE_URL } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import {
   Shield, Key, Layers, Globe, Sun, Moon, Upload, Plus, Trash2,
-  CheckCircle, X, AlertCircle, GitBranch, Sliders, Package, TrendingUp
+  CheckCircle, X, AlertCircle, GitBranch, Sliders, Package, TrendingUp, Pencil
 } from 'lucide-react'
 import { getPlanLimits } from '../lib/planEnforcement'
 import type { Plan } from '../lib/planEnforcement'
@@ -27,7 +27,7 @@ const ADDON_CATALOG = [
 type AddonKey = typeof ADDON_CATALOG[number]['key']
 
 const ADMIN_TABS = [
-  'Users',
+  'Onboarding',
   'Approval Matrix',
   'Enterprise Add-ons',
   'White Label',
@@ -37,13 +37,31 @@ const ADMIN_TABS = [
 type AdminTab = typeof ADMIN_TABS[number]
 
 export default function AdminPage() {
-  const { profile, post, tenant, branding, refreshBranding, effectivePlan } = useAuth()
+  const { profile, post, tenant, branding, refreshBranding, refreshProfile, effectivePlan } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
 
   const level = post?.hierarchy_levels
   const isExec = level && level.rank <= 1
   const isITAdmin = level?.is_it_admin || isExec
+
+  const [paynowConfirming, setPaynowConfirming] = useState(false)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (!params.get('paynow_return')) return
+    setPaynowConfirming(true)
+    window.history.replaceState({}, '', window.location.pathname)
+    // The browser landing back here is not proof of payment — only the
+    // paynow-webhook function (server-to-server) confirms that. Poll a few
+    // times for the plan to update rather than trusting this redirect itself.
+    let attempts = 0
+    const interval = setInterval(async () => {
+      attempts++
+      await refreshProfile()
+      if (attempts >= 5) { clearInterval(interval); setPaynowConfirming(false) }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [])
 
   if (!isITAdmin) return (
     <Layout title="Admin">
@@ -54,17 +72,22 @@ export default function AdminPage() {
     </Layout>
   )
 
-  const [tab, setTab] = useState<AdminTab>('Users')
+  const [tab, setTab] = useState<AdminTab>('Onboarding')
 
   return (
     <Layout title="Admin">
+      {paynowConfirming && (
+        <div style={{ background: 'var(--info-dim)', color: 'var(--info)', padding: '0.75rem 1rem', borderRadius: 8, marginBottom: '1rem', fontSize: 'var(--text-small)' }}>
+          Confirming your PayNow payment — this can take a minute. Your plan will update automatically once it lands.
+        </div>
+      )}
       <TabBar style={{ marginBottom: '1.5rem' }}>
         {ADMIN_TABS.map(t => (
           <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)} style={{ fontSize: 'var(--text-small)' }}>{t}</button>
         ))}
       </TabBar>
 
-      {tab === 'Users'              && <UsersTab profile={profile} tenant={tenant} />}
+      {tab === 'Onboarding'         && <OnboardingTab profile={profile} tenant={tenant} isExec={isExec} />}
       {tab === 'Approval Matrix'    && <ApprovalMatrixTab profile={profile} tenant={tenant} isExec={isExec} effectivePlan={effectivePlan} />}
       {tab === 'Enterprise Add-ons' && <EnterpriseAddonsTab profile={profile} tenant={tenant} />}
       {tab === 'White Label'        && <WhiteLabelTab profile={profile} tenant={tenant} branding={branding} refreshBranding={refreshBranding} />}
@@ -74,244 +97,361 @@ export default function AdminPage() {
   )
 }
 
-/* ── USERS TAB ──────────────────────────────────────────────────── */
-function UsersTab({ profile, tenant }: any) {
-  const [users, setUsers] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showModal, setShowModal] = useState(false)
-  const [editUser, setEditUser] = useState<any>(null)
-  const [form, setForm] = useState({ full_name: '', email: '', phone: '', entity_id: '', post_id: '' })
-  const [entities, setEntities] = useState<any[]>([])
+/* ── ONBOARDING TAB ─────────────────────────────────────────────── */
+// This is what lets a client actually make VELA feel like their own company
+// instead of a copy of Helikon's setup — the rank names, how many tiers
+// they have, who reports to whom for endorsement, and what each post is
+// literally called are all editable here, per-tenant, without a code change.
+function OnboardingTab({ profile, tenant, isExec }: any) {
+  const [subTab, setSubTab] = useState<'ranks' | 'posts' | 'invite'>('ranks')
+  const [levels, setLevels] = useState<any[]>([])
   const [posts, setPosts] = useState<any[]>([])
-  const [submitting, setSubmitting] = useState(false)
-  const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [entities, setEntities] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => { if (profile) { load(); loadEntities(); loadPosts() } }, [profile])
+  const [showLevelModal, setShowLevelModal] = useState(false)
+  const [editLevel, setEditLevel] = useState<any>(null)
+  const [levelForm, setLevelForm] = useState<any>(blankLevel())
+  const [showPostModal, setShowPostModal] = useState(false)
+  const [editPost, setEditPost] = useState<any>(null)
+  const [postForm, setPostForm] = useState<any>(blankPost())
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
 
-  async function load() {
-    setLoading(true)
-    const { data } = await supabase
-      .from('user_profiles')
-      .select('*, entities!entity_id(name), hierarchy_levels!post_id(name, rank)')
-      .eq('tenant_id', profile.tenant_id)
-      .is('deleted_at', null)
-      .order('full_name')
-      .limit(1000)
-    setUsers(data || [])
-    setLoading(false)
-  }
-
-  async function loadEntities() {
-    const { data } = await supabase.from('entities').select('id,name').eq('tenant_id', profile.tenant_id)
-    setEntities(data || [])
-  }
-
-  async function loadPosts() {
-    const { data } = await supabase.from('hierarchy_levels').select('id,name,rank').eq('tenant_id', profile.tenant_id).order('rank')
-    setPosts(data || [])
-  }
-
-  function openAdd() {
-    setEditUser(null)
-    setForm({ full_name: '', email: '', phone: '', entity_id: entities[0]?.id || '', post_id: posts[0]?.id || '' })
-    setShowModal(true)
-  }
-
-  function openEdit(u: any) {
-    setEditUser(u)
-    setForm({ full_name: u.full_name || '', email: u.email || '', phone: u.phone || '', entity_id: u.entity_id || '', post_id: u.post_id || '' })
-    setShowModal(true)
-  }
-
+  // Invite-user state
+  const [inviteForm, setInviteForm] = useState({ full_name: '', email: '', phone: '', post_id: '' })
+  const [inviting, setInviting] = useState(false)
   const [inviteResult, setInviteResult] = useState<{ email: string } | null>(null)
   const [inviteError, setInviteError] = useState<string | null>(null)
 
-  async function saveUser(e: React.FormEvent) {
-    e.preventDefault(); setSubmitting(true)
-    if (editUser) {
-      await supabase.from('user_profiles').update({
-        full_name: form.full_name, phone: form.phone,
-        entity_id: form.entity_id, post_id: form.post_id
-      }).eq('id', editUser.id)
-      setShowModal(false); setEditUser(null); await load(); setSubmitting(false)
+  function blankLevel() {
+    return { name: '', rank: (levels.length ? Math.max(...levels.map(l => l.rank)) + 1 : 1), can_approve: false, can_endorse: false, can_set_targets: true, can_assign_tasks: true, can_see_budgets: false, can_see_hierarchy: false, is_accounting: false, is_hr: false, is_it_admin: false, petty_cash_limit: 15, dual_approval_threshold: 999 }
+  }
+  function blankPost() {
+    return { title: '', entity_id: entities[0]?.id || '', level_id: levels[0]?.id || '', dept_manager_post_id: '' }
+  }
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    const tid = profile.tenant_id
+    const [lvlRes, postRes, entRes] = await Promise.all([
+      supabase.from('hierarchy_levels').select('*').eq('tenant_id', tid).order('rank'),
+      supabase.from('posts').select('*, entities!entity_id(name), hierarchy_levels!level_id(name, rank), manager:posts!dept_manager_post_id(title)').eq('tenant_id', tid).order('created_at'),
+      supabase.from('entities').select('id, name').eq('tenant_id', tid).order('name'),
+    ])
+    setLevels(lvlRes.data || [])
+    setPosts(postRes.data || [])
+    setEntities(entRes.data || [])
+    setLoading(false)
+  }
+
+  function openLevel(l?: any) {
+    setErr('')
+    if (l) { setEditLevel(l); setLevelForm({ ...l }) } else { setEditLevel(null); setLevelForm(blankLevel()) }
+    setShowLevelModal(true)
+  }
+
+  async function saveLevel() {
+    if (!levelForm.name.trim()) { setErr('Name is required.'); return }
+    setSaving(true); setErr('')
+    const payload = { ...levelForm, tenant_id: profile.tenant_id }
+    const { error } = editLevel
+      ? await supabase.from('hierarchy_levels').update(payload).eq('id', editLevel.id)
+      : await supabase.from('hierarchy_levels').insert(payload)
+    setSaving(false)
+    if (error) { setErr(error.message); return }
+    setShowLevelModal(false)
+    await load()
+  }
+
+  async function deleteLevel(l: any) {
+    const inUse = posts.some(p => p.level_id === l.id)
+    if (inUse) { alert(`Can't delete "${l.name}" — it's still assigned to one or more posts. Reassign those posts first.`); return }
+    if (!confirm(`Delete the "${l.name}" rank? This can't be undone.`)) return
+    await supabase.from('hierarchy_levels').delete().eq('id', l.id)
+    await load()
+  }
+
+  function openPost(p?: any) {
+    setErr('')
+    if (p) { setEditPost(p); setPostForm({ title: p.title, entity_id: p.entity_id, level_id: p.level_id, dept_manager_post_id: p.dept_manager_post_id || '' }) }
+    else { setEditPost(null); setPostForm(blankPost()) }
+    setShowPostModal(true)
+  }
+
+  async function savePost() {
+    if (!postForm.title.trim() || !postForm.entity_id || !postForm.level_id) { setErr('Title, entity, and rank are all required.'); return }
+    setSaving(true); setErr('')
+    const payload = {
+      title: postForm.title, entity_id: postForm.entity_id, level_id: postForm.level_id,
+      dept_manager_post_id: postForm.dept_manager_post_id || null,
+      tenant_id: profile.tenant_id, is_active: true,
+    }
+    const { error } = editPost
+      ? await supabase.from('posts').update(payload).eq('id', editPost.id)
+      : await supabase.from('posts').insert(payload)
+    setSaving(false)
+    if (error) { setErr(error.message); return }
+    setShowPostModal(false)
+    await load()
+  }
+
+  async function deletePost(p: any) {
+    const { count } = await supabase.from('user_profiles').select('id', { count: 'exact', head: true }).eq('post_id', p.id)
+    if (count && count > 0) { alert(`Can't delete "${p.title}" — ${count} ${count === 1 ? 'person is' : 'people are'} still assigned to it. Move them to a different post first.`); return }
+    if (!confirm(`Delete the "${p.title}" post? This can't be undone.`)) return
+    await supabase.from('posts').delete().eq('id', p.id)
+    await load()
+  }
+
+  useEffect(() => { if (!isExec) setSubTab('invite') }, [isExec])
+
+  async function sendInvite() {
+    if (!inviteForm.full_name.trim() || !inviteForm.email.trim() || !inviteForm.post_id) {
+      setInviteError('Full name, email, and post are all required.')
       return
     }
-
-    setInviteError(null)
-
-    // Real admin-invite path — runs server-side with the service-role Admin
-    // API, so it always sends a genuine invite email and never silently
-    // no-ops the way supabase.auth.signUp() does for an already-registered
-    // address. See supabase/functions/invite-user for why this had to move
-    // off the client.
+    setInviting(true); setInviteError(null)
+    const chosenPost = posts.find(p => p.id === inviteForm.post_id)
     const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch(`${SUPABASE_URL}/functions/v1/invite-user`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session?.access_token}`,
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
       body: JSON.stringify({
-        email: form.email,
-        full_name: form.full_name,
-        phone: form.phone,
-        entity_id: form.entity_id,
-        post_id: form.post_id,
+        email: inviteForm.email, full_name: inviteForm.full_name, phone: inviteForm.phone,
+        entity_id: chosenPost?.entity_id, post_id: inviteForm.post_id,
       }),
     })
     const result = await res.json()
-
-    if (!res.ok || result.error) {
-      setInviteError(result.error || 'Failed to send invite')
-      setSubmitting(false)
-      return
-    }
-
-    setShowModal(false)
-    setEditUser(null)
-    setInviteResult({ email: form.email })
-    await load()
-    setSubmitting(false)
+    setInviting(false)
+    if (!res.ok || result.error) { setInviteError(result.error || 'Failed to send invite'); return }
+    setInviteForm({ full_name: '', email: '', phone: '', post_id: '' })
+    setInviteResult({ email: inviteForm.email })
   }
 
-  async function toggleActive(u: any) {
-    const newState = !u.is_active
-    await supabase.from('user_profiles').update({ is_active: newState }).eq('id', u.id)
-    await load()
-  }
-
-  async function deleteUser(id: string) {
-    if (!confirm('Soft-delete this user? They will lose access immediately.')) return
-    await supabase.from('user_profiles').update({ deleted_at: new Date().toISOString(), is_active: false }).eq('id', id)
-    await load()
-  }
-
-  const filtered = users.filter(u =>
-    filter === 'all' ? true : filter === 'active' ? u.is_active : !u.is_active
-  )
+  const boolFields: { key: string; label: string }[] = [
+    { key: 'can_approve', label: 'Can approve requests' },
+    { key: 'can_endorse', label: 'Can endorse (pre-approval sign-off)' },
+    { key: 'can_set_targets', label: 'Can set targets' },
+    { key: 'can_assign_tasks', label: 'Can assign tasks' },
+    { key: 'can_see_budgets', label: 'Can see budgets/finance' },
+    { key: 'can_see_hierarchy', label: 'Can see full org hierarchy' },
+    { key: 'is_accounting', label: 'Accounting role' },
+    { key: 'is_hr', label: 'HR role' },
+    { key: 'is_it_admin', label: 'IT Administrator' },
+  ]
 
   return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-        <TabBar>
-          {(['all', 'active', 'inactive'] as const).map(f => (
-            <button key={f} className={`tab ${filter === f ? 'active' : ''}`} style={{ fontSize: 'var(--text-small)', textTransform: 'capitalize' }} onClick={() => setFilter(f)}>{f} ({f === 'all' ? users.length : f === 'active' ? users.filter(u => u.is_active).length : users.filter(u => !u.is_active).length})</button>
-          ))}
-        </TabBar>
-        <button className="btn-gold" style={{ fontSize: 'var(--text-small)', gap: 5 }} onClick={openAdd}><Plus size={14} />Invite User</button>
-      </div>
+    <div>
+      <p style={{ margin: '0 0 1.25rem', fontSize: 'var(--text-small)', color: 'var(--text-muted)', maxWidth: 640 }}>
+        {isExec
+          ? <>This is your company's own structure — not a fixed template. Add as many or as few rank tiers as you actually have,
+              name them whatever your company calls them, and decide per rank what they can do. Posts are the actual named
+              positions people get assigned to (e.g. "Regional Sales Manager"), each tied to one rank and one entity.</>
+          : 'Add new people to the company here. Editing or deactivating existing users is done from the Group tab by an Executive.'}
+      </p>
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        {loading
-          ? <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><div className="spinner" /></div>
-          : filtered.length === 0
-          ? <div className="empty-state"><p className="empty-state-title">No users</p><button className="btn-gold" onClick={openAdd}>Invite First User</button></div>
-          : <div style={{ overflowX: 'auto' }}><table className="data-table">
-              <thead><tr><th>Name</th><th>Email</th><th>Entity</th><th>Role</th><th>Status</th><th></th></tr></thead>
-              <tbody>{filtered.map(u => (
-                <tr key={u.id}>
-                  <td style={{ fontWeight: 500 }}>{u.full_name || '—'}</td>
-                  <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{u.email}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{u.entities?.name || '—'}</td>
-                  <td>{u.hierarchy_levels?.name || '—'}</td>
-                  <td>
-                    <span className={`badge ${u.is_active ? 'badge-approved' : 'badge-rejected'}`}>
-                      {u.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn-ghost" style={{ padding: '0.25rem 0.5rem', fontSize: 'var(--text-micro)' }} onClick={() => openEdit(u)}>Edit</button>
-                      <button className="btn-ghost" style={{ padding: '0.25rem 0.5rem', fontSize: 'var(--text-micro)', color: u.is_active ? 'var(--danger)' : 'var(--gold)' }} onClick={() => toggleActive(u)}>
-                        {u.is_active ? 'Deactivate' : 'Reactivate'}
-                      </button>
-                      <button onClick={() => deleteUser(u.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', padding: '0.25rem' }}><Trash2 size={13} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}</tbody>
-            </table></div>
-        }
-      </div>
+      <TabBar style={{ marginBottom: '1.25rem' }}>
+        {isExec && <button className={`tab ${subTab === 'ranks' ? 'active' : ''}`} onClick={() => setSubTab('ranks')}>Hierarchy Ranks</button>}
+        {isExec && <button className={`tab ${subTab === 'posts' ? 'active' : ''}`} onClick={() => setSubTab('posts')}>Posts</button>}
+        <button className={`tab ${subTab === 'invite' ? 'active' : ''}`} onClick={() => setSubTab('invite')}>Add User</button>
+      </TabBar>
 
-      {showModal && (
-        <div className="modal-backdrop" onClick={() => setShowModal(false)}>
-          <div className="card" style={{ width: '100%', maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 style={{ fontFamily: "'Playfair Display', serif", margin: 0, fontSize: 'var(--text-body)' }}>{editUser ? 'Edit User' : 'Invite User'}</h3>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-            <form onSubmit={saveUser}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label className="form-label">Full Name</label>
-                <input className="input" required value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} />
-              </div>
-              {!editUser && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <label className="form-label">Email</label>
-                  <input className="input" type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="user@company.co.zw" />
-                </div>
-              )}
-              <div style={{ marginBottom: '1rem' }}>
-                <label className="form-label">Phone</label>
-                <input className="input" type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+263..." />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label className="form-label">Entity / Company</label>
-                <select className="input" value={form.entity_id} onChange={e => setForm({ ...form, entity_id: e.target.value })}>
-                  <option value="">Select entity...</option>
-                  {entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                </select>
-              </div>
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label">Role / Level</label>
-                <select className="input" value={form.post_id} onChange={e => setForm({ ...form, post_id: e.target.value })}>
-                  <option value="">Select role...</option>
-                  {posts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-              {!editUser && (
-                <p style={{ fontSize: 'var(--text-micro)', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                  A temporary password will be generated. Share it securely with the new user — they can change it after first login.
-                </p>
-              )}
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
-                <button type="submit" className="btn-gold" disabled={submitting}>{submitting ? 'Saving...' : editUser ? 'Save Changes' : 'Create User'}</button>
-              </div>
-            </form>
+      {subTab === 'invite' ? (
+        <div className="card" style={{ maxWidth: 440 }}>
+          {inviteError && <p style={{ color: 'var(--danger)', fontSize: 'var(--text-small)', marginBottom: '0.875rem' }}>{inviteError}</p>}
+          <div style={{ marginBottom: '0.875rem' }}>
+            <label className="form-label">Full Name</label>
+            <input className="input" value={inviteForm.full_name} onChange={e => setInviteForm({ ...inviteForm, full_name: e.target.value })} />
+          </div>
+          <div style={{ marginBottom: '0.875rem' }}>
+            <label className="form-label">Email</label>
+            <input className="input" type="email" value={inviteForm.email} onChange={e => setInviteForm({ ...inviteForm, email: e.target.value })} placeholder="user@company.co.zw" />
+          </div>
+          <div style={{ marginBottom: '0.875rem' }}>
+            <label className="form-label">Phone</label>
+            <input className="input" type="tel" value={inviteForm.phone} onChange={e => setInviteForm({ ...inviteForm, phone: e.target.value })} placeholder="+263..." />
+          </div>
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label">Post</label>
+            <select className="input" value={inviteForm.post_id} onChange={e => setInviteForm({ ...inviteForm, post_id: e.target.value })}>
+              <option value="">Select post...</option>
+              {posts.map(p => <option key={p.id} value={p.id}>{p.title} — {p.entities?.name}</option>)}
+            </select>
+            {posts.length === 0 && <p style={{ margin: '0.4rem 0 0', fontSize: 'var(--text-micro)', color: 'var(--warning)' }}>No posts have been set up yet — ask an Executive to add one under Hierarchy Ranks / Posts first.</p>}
+          </div>
+          <button className="btn-gold" style={{ width: '100%' }} disabled={inviting || posts.length === 0} onClick={sendInvite}>{inviting ? 'Sending invite...' : 'Send Invite'}</button>
+          <p style={{ margin: '0.75rem 0 0', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>They'll get an email to set their own password — no credentials for you to share.</p>
+        </div>
+      ) : loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div> : subTab === 'ranks' ? (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.875rem' }}>
+            <button className="btn-gold" onClick={() => openLevel()} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Plus size={16} /> Add Rank</button>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead><tr><th>Rank</th><th>Name</th><th>Approve</th><th>Endorse</th><th>Petty Cash</th><th>Dual Approval</th><th></th></tr></thead>
+              <tbody>
+                {levels.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No ranks yet — add your first one.</td></tr>
+                  : levels.map(l => (
+                    <tr key={l.id}>
+                      <td style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--gold)' }}>{l.rank}</td>
+                      <td style={{ fontWeight: 500 }}>{l.name}</td>
+                      <td>{l.can_approve ? <CheckCircle size={14} style={{ color: 'var(--success)' }} /> : '—'}</td>
+                      <td>{l.can_endorse ? <CheckCircle size={14} style={{ color: 'var(--info)' }} /> : '—'}</td>
+                      <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)' }}>USD {parseFloat(l.petty_cash_limit).toFixed(2)}</td>
+                      <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)' }}>USD {parseFloat(l.dual_approval_threshold).toFixed(2)}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                          <button onClick={() => openLevel(l)} title="Edit" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><Pencil size={14} /></button>
+                          <button onClick={() => deleteLevel(l)} title="Delete" style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: 4 }}><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.875rem' }}>
+            <button className="btn-gold" onClick={() => openPost()} disabled={!levels.length || !entities.length} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Plus size={16} /> Add Post</button>
+          </div>
+          {(!levels.length || !entities.length) && <p style={{ fontSize: 'var(--text-small)', color: 'var(--warning)', marginBottom: '0.875rem' }}>Add at least one rank and one entity before creating posts.</p>}
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead><tr><th>Post</th><th>Entity</th><th>Rank</th><th>Reports To (endorsement)</th><th></th></tr></thead>
+              <tbody>
+                {posts.length === 0 ? <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No posts yet — add your first one.</td></tr>
+                  : posts.map(p => (
+                    <tr key={p.id}>
+                      <td style={{ fontWeight: 500 }}>{p.title}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{p.entities?.name}</td>
+                      <td>{p.hierarchy_levels?.name}</td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{p.manager?.title || '—'}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                          <button onClick={() => openPost(p)} title="Edit" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><Pencil size={14} /></button>
+                          <button onClick={() => deletePost(p)} title="Delete" style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: 4 }}><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
+      {/* Rank modal */}
+      {showLevelModal && (
+        <div className="modal-backdrop" onClick={() => setShowLevelModal(false)}>
+          <div className="card" style={{ width: '100%', maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 'var(--text-lead)', margin: 0 }}>{editLevel ? 'Edit Rank' : 'Add Rank'}</h3>
+              <button onClick={() => setShowLevelModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+            {err && <p style={{ color: 'var(--danger)', fontSize: 'var(--text-small)', marginBottom: '0.75rem' }}>{err}</p>}
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.875rem' }}>
+              <div style={{ flex: 1 }}>
+                <label className="form-label">Rank name</label>
+                <input className="input" value={levelForm.name} onChange={e => setLevelForm({ ...levelForm, name: e.target.value })} placeholder="e.g. Regional Head" />
+              </div>
+              <div style={{ width: 90 }}>
+                <label className="form-label">Tier</label>
+                <input className="input" type="number" min={0} value={levelForm.rank} onChange={e => setLevelForm({ ...levelForm, rank: parseInt(e.target.value) || 0 })} />
+              </div>
+            </div>
+            <p style={{ margin: '0 0 0.5rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>Lower tier number = more senior (0 is the top of the company).</p>
+
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.875rem' }}>
+              <div style={{ flex: 1 }}>
+                <label className="form-label">Petty cash limit (USD)</label>
+                <input className="input" type="number" min={0} step="0.01" value={levelForm.petty_cash_limit} onChange={e => setLevelForm({ ...levelForm, petty_cash_limit: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="form-label">Dual-approval threshold (USD)</label>
+                <input className="input" type="number" min={0} step="0.01" value={levelForm.dual_approval_threshold} onChange={e => setLevelForm({ ...levelForm, dual_approval_threshold: parseFloat(e.target.value) || 0 })} />
+              </div>
+            </div>
+
+            <p style={{ margin: '0 0 0.5rem', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>What this rank can do</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1.25rem' }}>
+              {boolFields.map(f => (
+                <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-small)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!levelForm[f.key]} onChange={e => setLevelForm({ ...levelForm, [f.key]: e.target.checked })} />
+                  {f.label}
+                </label>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button className="btn-ghost" onClick={() => setShowLevelModal(false)}>Cancel</button>
+              <button className="btn-gold" disabled={saving} onClick={saveLevel}>{saving ? 'Saving...' : editLevel ? 'Save Changes' : 'Add Rank'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Post modal */}
+      {showPostModal && (
+        <div className="modal-backdrop" onClick={() => setShowPostModal(false)}>
+          <div className="card" style={{ width: '100%', maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 'var(--text-lead)', margin: 0 }}>{editPost ? 'Edit Post' : 'Add Post'}</h3>
+              <button onClick={() => setShowPostModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+            {err && <p style={{ color: 'var(--danger)', fontSize: 'var(--text-small)', marginBottom: '0.75rem' }}>{err}</p>}
+            <div style={{ marginBottom: '0.875rem' }}>
+              <label className="form-label">Post title</label>
+              <input className="input" value={postForm.title} onChange={e => setPostForm({ ...postForm, title: e.target.value })} placeholder="e.g. Regional Sales Manager" />
+            </div>
+            <div style={{ marginBottom: '0.875rem' }}>
+              <label className="form-label">Entity</label>
+              <select className="input" value={postForm.entity_id} onChange={e => setPostForm({ ...postForm, entity_id: e.target.value })}>
+                {entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: '0.875rem' }}>
+              <label className="form-label">Rank</label>
+              <select className="input" value={postForm.level_id} onChange={e => setPostForm({ ...postForm, level_id: e.target.value })}>
+                {levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label className="form-label">Reports to (for endorsement routing)</label>
+              <select className="input" value={postForm.dept_manager_post_id} onChange={e => setPostForm({ ...postForm, dept_manager_post_id: e.target.value })}>
+                <option value="">— None —</option>
+                {posts.filter(p => p.id !== editPost?.id).map(p => <option key={p.id} value={p.id}>{p.title} ({p.entities?.name})</option>)}
+              </select>
+              <p style={{ margin: '0.4rem 0 0', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>If this post's requests need sign-off from someone else before going to final approval, pick that post here.</p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button className="btn-ghost" onClick={() => setShowPostModal(false)}>Cancel</button>
+              <button className="btn-gold" disabled={saving} onClick={savePost}>{saving ? 'Saving...' : editPost ? 'Save Changes' : 'Add Post'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {inviteResult && (
         <div className="modal-backdrop" onClick={() => setInviteResult(null)}>
           <div className="card" style={{ width: '100%', maxWidth: 400, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📧</div>
             <h3 style={{ fontFamily: "'Playfair Display',serif", margin: '0 0 0.5rem' }}>Invite sent</h3>
             <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)', marginBottom: '1.25rem' }}>
-              An invite email was sent to <strong>{inviteResult.email}</strong>. They'll set their own password by clicking the link in it — no credentials for you to share.
+              An invite email was sent to <strong>{inviteResult.email}</strong>. They'll set their own password by clicking the link in it.
             </p>
             <button className="btn-gold" style={{ width: '100%' }} onClick={() => setInviteResult(null)}>Done</button>
           </div>
         </div>
       )}
-
-      {inviteError && (
-        <div className="modal-backdrop" onClick={() => setInviteError(null)}>
-          <div className="card" style={{ width: '100%', maxWidth: 400, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>⚠️</div>
-            <h3 style={{ fontFamily: "'Playfair Display',serif", margin: '0 0 0.5rem' }}>Couldn't send invite</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)', marginBottom: '1.25rem' }}>{inviteError}</p>
-            <button className="btn-gold" style={{ width: '100%' }} onClick={() => setInviteError(null)}>Close</button>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   )
 }
 
-/* ── APPROVAL MATRIX TAB ────────────────────────────────────────── */
 function ApprovalMatrixTab({ profile, tenant, isExec, effectivePlan }: any) {
   const isEnterprise = effectivePlan === 'enterprise'
   const isGroup      = effectivePlan === 'group'
@@ -1075,7 +1215,7 @@ function APIKeysTab({ profile, tenant }: any) {
             <div><label className="form-label">Name</label><input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Payroll Sync" /></div>
             <div><label className="form-label">Scopes</label>
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                {['read','write','payroll','inventory','reporting'].map(s => (
+                {['read','write','inventory','reporting'].map(s => (
                   <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--text-small)', cursor: 'pointer' }}>
                     <input type="checkbox" checked={form.scopes.includes(s)} onChange={e => setForm({ ...form, scopes: e.target.checked ? [...form.scopes, s] : form.scopes.filter(x => x !== s) })} />{s}
                   </label>
@@ -1114,12 +1254,34 @@ function APIKeysTab({ profile, tenant }: any) {
 function SubscriptionTab({ tenant, navigate, profile, isExec }: any) {
   const plan = (tenant?.plan || 'starter') as Plan
   const limits = getPlanLimits(plan)
+  const [payingPlan, setPayingPlan] = useState<Plan | null>(null)
+  const [payError, setPayError] = useState('')
   const descriptions: Record<Plan, { price: string; summary: string }> = {
     starter: { price: '$49/mo', summary: '1 company · 5 branches · 50 employees' },
     group: { price: '$199/mo', summary: '5 companies · 50 branches · Unlimited employees' },
     enterprise: { price: '$399/mo base', summary: 'Unlimited · Full API · White-label · Insights Dashboard' },
   }
   const info = descriptions[plan]
+  const paidUntil = tenant?.plan_paid_until ? new Date(tenant.plan_paid_until) : null
+  const daysLeft = paidUntil ? Math.ceil((paidUntil.getTime() - Date.now()) / 86400000) : null
+
+  async function payFor(targetPlan: Plan) {
+    setPayingPlan(targetPlan); setPayError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/paynow-initiate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ plan: targetPlan }),
+      })
+      const result = await res.json()
+      if (!res.ok || result.error) { setPayError(result.error || 'Could not start checkout'); setPayingPlan(null); return }
+      window.location.href = result.browserurl
+    } catch {
+      setPayError('Could not reach the payment service. Check your connection and try again.')
+      setPayingPlan(null)
+    }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -1127,6 +1289,11 @@ function SubscriptionTab({ tenant, navigate, profile, isExec }: any) {
         <p style={{ margin: '0 0 0.25rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Current Plan</p>
         <p style={{ margin: '0 0 0.25rem', fontFamily: "'Playfair Display', serif", fontSize: 'var(--text-h2)', fontWeight: 700, color: 'var(--gold)', textTransform: 'capitalize' }}>{plan}</p>
         <p style={{ margin: '0 0 1rem', fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>{info.price} · {info.summary}</p>
+        {paidUntil && (
+          <p style={{ margin: '0 0 1rem', fontSize: 'var(--text-small)', color: daysLeft !== null && daysLeft <= 3 ? 'var(--warning)' : 'var(--text-muted)' }}>
+            {daysLeft !== null && daysLeft > 0 ? `Paid through ${paidUntil.toLocaleDateString()} (${daysLeft} days left)` : 'Subscription has lapsed — renew to keep full access.'}
+          </p>
+        )}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           {[
             { label: 'Group Oversight', on: limits.hasGroupOversight },
@@ -1146,10 +1313,22 @@ function SubscriptionTab({ tenant, navigate, profile, isExec }: any) {
 
       <SubdomainManager tenant={tenant} profile={profile} isExec={isExec} />
 
-      {plan !== 'enterprise' && (
-        <button className="btn-gold" onClick={() => navigate('/register?upgrade=true')} style={{ alignSelf: 'flex-start', gap: 6 }}>
-          Upgrade to {plan === 'starter' ? 'Group' : 'Enterprise'} →
-        </button>
+      {isExec && (
+        <div className="card">
+          <p style={{ margin: '0 0 1rem', fontSize: 'var(--text-small)', fontWeight: 600 }}>Billing (via PayNow)</p>
+          {payError && <p style={{ color: 'var(--danger)', fontSize: 'var(--text-small)', marginBottom: '0.875rem' }}>{payError}</p>}
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button className="btn-gold" disabled={!!payingPlan} onClick={() => payFor(plan)}>
+              {payingPlan === plan ? 'Redirecting to PayNow...' : `Renew ${plan} — ${info.price}`}
+            </button>
+            {plan !== 'enterprise' && (
+              <button className="btn-ghost" disabled={!!payingPlan} onClick={() => payFor(plan === 'starter' ? 'group' : 'enterprise')}>
+                {payingPlan ? 'Redirecting...' : `Upgrade to ${plan === 'starter' ? 'Group' : 'Enterprise'} — ${descriptions[plan === 'starter' ? 'group' : 'enterprise'].price}`}
+              </button>
+            )}
+          </div>
+          <p style={{ margin: '0.75rem 0 0', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>You'll be redirected to PayNow to complete payment via EcoCash, card, or bank transfer.</p>
+        </div>
       )}
     </div>
   )

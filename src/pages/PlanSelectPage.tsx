@@ -82,7 +82,7 @@ export default function PlanSelectPage() {
                   padding: '0.4rem 1.1rem', borderRadius: 999, border: 'none', cursor: 'pointer',
                   fontSize: 'var(--text-small)', fontWeight: 600, textTransform: 'capitalize',
                   background: billing === b ? 'var(--gold)' : 'transparent',
-                  color: billing === b ? '#0f0f23' : 'var(--text-muted)',
+                  color: billing === b ? 'var(--gold-text)' : 'var(--text-muted)',
                   transition: 'all 0.15s',
                 }}>
                 {b === 'annual' ? 'Annual (2 months free)' : 'Monthly'}
@@ -111,7 +111,7 @@ export default function PlanSelectPage() {
                 position: 'relative', boxShadow: plan.featured ? '0 0 0 1px var(--gold-border)' : 'none',
               }}>
                 {plan.featured && (
-                  <div style={{ position: 'absolute', top: 12, right: 12, fontSize: 'var(--text-micro)', fontWeight: 700, letterSpacing: '0.08em', padding: '3px 8px', borderRadius: 999, background: 'var(--gold)', color: '#0f0f23' }}>POPULAR</div>
+                  <div style={{ position: 'absolute', top: 12, right: 12, fontSize: 'var(--text-micro)', fontWeight: 700, letterSpacing: '0.08em', padding: '3px 8px', borderRadius: 999, background: 'var(--gold)', color: 'var(--gold-text)' }}>POPULAR</div>
                 )}
 
                 <h3 style={{ margin: '0 0 0.25rem', fontFamily: "'Playfair Display',serif", fontSize: 'var(--text-h3)' }}>{plan.name}</h3>

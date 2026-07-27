@@ -109,7 +109,7 @@ export default function RegisterPage() {
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 50, height: 50, borderRadius: '12px', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', marginBottom: '0.875rem' }}>
-            <Shield size={22} color="#0f0f23" />
+            <Shield size={22} color="var(--gold-text)" />
           </div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.6rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>VELA</h1>
           <p style={{ fontSize: 'var(--text-micro)', color: 'var(--text-muted)', letterSpacing: '0.12em', marginTop: 3 }}>COMMAND YOUR GROUP</p>
@@ -194,7 +194,7 @@ export default function RegisterPage() {
             <button type="submit" className="btn-gold" disabled={loading || !agreed}
               style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               {loading
-                ? <><div style={{ width: 14, height: 14, border: '2px solid rgba(0,0,0,0.3)', borderTopColor: '#0f0f23', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> Creating workspace...</>
+                ? <><div style={{ width: 14, height: 14, border: '2px solid rgba(0,0,0,0.3)', borderTopColor: 'var(--gold-text)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> Creating workspace...</>
                 : 'Sign Up — Choose Your Plan →'}
             </button>
           </form>

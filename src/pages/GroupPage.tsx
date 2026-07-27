@@ -13,11 +13,10 @@ export default function GroupPage() {
   const navigate  = useNavigate()
   const level     = post?.hierarchy_levels
   const isExec    = level && level.rank <= 1
-  const isManager = level && level.rank <= 2
 
-  if (!isManager) return (
+  if (!isExec) return (
     <Layout title="Group">
-      <div style={{ textAlign:'center', padding:'3rem', color:'var(--text-muted)' }}>Manager access required.</div>
+      <div style={{ textAlign:'center', padding:'3rem', color:'var(--text-muted)' }}>Executive access required.</div>
     </Layout>
   )
 

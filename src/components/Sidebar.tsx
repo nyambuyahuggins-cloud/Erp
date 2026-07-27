@@ -18,7 +18,6 @@ export default function Sidebar() {
 
   const level = post?.hierarchy_levels
   const isExec       = level && level.rank <= 1
-  const isManager    = level && level.rank <= 2
   const isITAdmin    = level?.is_it_admin || isExec
   const isAccounting = level?.can_see_budgets || level?.is_accounting || isExec
 
@@ -41,7 +40,7 @@ export default function Sidebar() {
     { icon: <Users           size={16} />, label: 'People',           path: '/hr' },
     { icon: <ClipboardList   size={16} />, label: 'Tasks & Targets',  path: '/work' },
     ...(isAccounting ? [{ icon: <DollarSign size={16} />, label: 'Finance', path: '/finance' }] : []),
-    ...(isManager ? [{ icon: <Building2 size={16} />, label: 'Group', path: '/group' }] : []),
+    ...(isExec ? [{ icon: <Building2 size={16} />, label: 'Group', path: '/group' }] : []),
     ...(isITAdmin ? [{ icon: <Shield    size={16} />, label: 'Admin', path: '/admin' }] : []),
   ]
 
@@ -109,7 +108,7 @@ export default function Sidebar() {
             width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
             background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 'var(--text-micro)', fontWeight: 700, color: 'var(--accent-color, #0f0f23)',
+            fontSize: 'var(--text-micro)', fontWeight: 700, color: 'var(--gold-text)',
           }}>
             {profile?.full_name?.charAt(0)?.toUpperCase() || '?'}
           </div>

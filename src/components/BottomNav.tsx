@@ -21,15 +21,15 @@ export default function BottomNav() {
   const [sheetOpen, setSheetOpen] = useState(false)
 
   const level = post?.hierarchy_levels
-  const isManager    = level && level.rank <= 2
-  const isITAdmin    = level?.is_it_admin || (level && level.rank <= 1)
-  const isAccounting = level?.can_see_budgets || level?.is_accounting || (level && level.rank <= 1)
+  const isExec       = level && level.rank <= 1
+  const isITAdmin    = level?.is_it_admin || isExec
+  const isAccounting = level?.can_see_budgets || level?.is_accounting || isExec
 
   if (!profile) return null
 
   const SECONDARY = [
     ...(isAccounting ? [{ icon: <DollarSign size={18} />, label: 'Finance', path: '/finance' }] : []),
-    ...(isManager  ? [{ icon: <Building2 size={18} />, label: 'Group',    path: '/group'    }] : []),
+    ...(isExec  ? [{ icon: <Building2 size={18} />, label: 'Group',    path: '/group'    }] : []),
     ...(isITAdmin  ? [{ icon: <Shield    size={18} />, label: 'Admin',    path: '/admin'    }] : []),
     { icon: <Settings   size={18} />, label: 'Settings',          path: '/settings' },
     { icon: <User       size={18} />, label: 'Profile',           path: '/profile'  },
