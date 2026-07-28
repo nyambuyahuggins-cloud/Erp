@@ -71,7 +71,13 @@ Deno.serve(async (req: Request) => {
     const plan = body.plan as string
     if (!PLAN_PRICES[plan]) return json({ error: 'Unknown plan' }, 400)
 
-    const amount = PLAN_PRICES[plan]
+    // A tenant's own tenants.monthly_amount overrides the plan default —
+    // this is what lets a specific client be billed a negotiated amount
+    // instead of the standard price for their plan tier. Set directly in
+    // the database (there's no self-serve UI for this on purpose, since a
+    // tenant should never be able to set their own price).
+    const { data: tenantRow } = await admin.from('tenants').select('monthly_amount').eq('id', callerProfile.tenant_id).single()
+    const amount = tenantRow?.monthly_amount || PLAN_PRICES[plan]
     const reference = `VELA-${callerProfile.tenant_id.slice(0, 8)}-${Date.now()}`
     const origin = req.headers.get('origin') || 'https://vela.co.zw'
 

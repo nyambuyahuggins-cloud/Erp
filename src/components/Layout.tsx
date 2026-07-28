@@ -2,6 +2,7 @@ import React from 'react'
 import Sidebar from './Sidebar'
 import EntityContextBar from './EntityContextBar'
 import BottomNav from './BottomNav'
+import PayNowGate from './PayNowGate'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 
@@ -20,6 +21,7 @@ export default function Layout({ children, title, action }: LayoutProps) {
   const isRoot = ROOT_PATHS.includes(location.pathname)
 
   return (
+    <PayNowGate>
     <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden' }}>
       <Sidebar />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
@@ -68,5 +70,6 @@ export default function Layout({ children, title, action }: LayoutProps) {
       </main>
       <BottomNav />
     </div>
+    </PayNowGate>
   )
 }

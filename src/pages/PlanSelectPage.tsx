@@ -34,9 +34,11 @@ export default function PlanSelectPage() {
     if (!profile) return
     setError('')
     setSaving(plan)
+    const trialEndsAt = new Date()
+    trialEndsAt.setDate(trialEndsAt.getDate() + 30)
     const { error: err } = await supabase
       .from('tenants')
-      .update({ plan, plan_confirmed: true })
+      .update({ plan, plan_confirmed: true, plan_paid_until: trialEndsAt.toISOString() })
       .eq('id', profile.tenant_id)
     setSaving(null)
     if (err) { setError(err.message); return }
@@ -48,9 +50,11 @@ export default function PlanSelectPage() {
   async function skipToStarter() {
     if (!profile) return
     setSaving('starter')
+    const trialEndsAt = new Date()
+    trialEndsAt.setDate(trialEndsAt.getDate() + 30)
     await supabase
       .from('tenants')
-      .update({ plan: 'starter', plan_confirmed: true })
+      .update({ plan: 'starter', plan_confirmed: true, plan_paid_until: trialEndsAt.toISOString() })
       .eq('id', profile.tenant_id)
     await refreshProfile()
     navigate('/onboarding/subdomain')

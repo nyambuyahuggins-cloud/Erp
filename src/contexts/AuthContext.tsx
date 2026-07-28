@@ -32,6 +32,7 @@ export interface Tenant {
   supported_currencies: string[]; currency_base: string; color_mode: string
   petty_cash_limit: number; dual_approval_threshold: number
   plan_confirmed: boolean; subdomain: string | null
+  plan_paid_until: string | null; monthly_amount: number | null
 }
 interface AuthContextType {
   session: Session | null; user: User | null; profile: Profile | null

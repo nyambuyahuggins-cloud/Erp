@@ -8,6 +8,14 @@
 // Anyone can POST to this URL, so the hash check below is the only thing
 // standing between "PayNow says this was paid" and "someone curled this
 // endpoint claiming a payment happened." Never skip it.
+//
+// Billing model: manual payments only, no auto-charging (PayNow doesn't
+// support silent recurring debits without separately-granted card
+// tokenization, and EcoCash always requires a phone-side PIN approval
+// regardless — see PayNowGate.tsx for the client-side expiry/grace/lockout
+// enforcement this feeds into). Every successful payment here — whether
+// it's the very first one, a regular manual renewal, or a late catch-up
+// payment during the grace window — just extends plan_paid_until.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { crypto } from 'jsr:@std/crypto'
@@ -35,8 +43,6 @@ Deno.serve(async (req: Request) => {
     const expectedHash = await md5Hex(Object.values(withoutHash).join('') + paynowKey)
 
     if (expectedHash !== receivedHash.toUpperCase()) {
-      // Do not touch any payment record on a bad hash — this is exactly the
-      // scenario the hash check exists to catch.
       return new Response('Invalid hash', { status: 401 })
     }
 
@@ -61,12 +67,17 @@ Deno.serve(async (req: Request) => {
     }).eq('id', payment.id)
 
     if (newStatus === 'paid') {
-      const paidUntil = new Date()
-      paidUntil.setDate(paidUntil.getDate() + 31) // monthly cycle; annual billing is handled separately in the plan-selection flow
+      // Extend from whichever is later — "now" or the current expiry — so
+      // paying early doesn't shorten what's left, and a late catch-up
+      // payment during the grace window doesn't get backdated either.
+      const { data: t } = await admin.from('tenants').select('plan_paid_until').eq('id', payment.tenant_id).single()
+      const current = t?.plan_paid_until ? new Date(t.plan_paid_until) : new Date()
+      const base = current.getTime() > Date.now() ? current : new Date()
+      base.setDate(base.getDate() + 30)
       await admin.from('tenants').update({
         plan: payment.plan,
         plan_confirmed: true,
-        plan_paid_until: paidUntil.toISOString(),
+        plan_paid_until: base.toISOString(),
       }).eq('id', payment.tenant_id)
     }
 
