@@ -36,7 +36,7 @@ export default function Sidebar() {
 
   const mainNav: NavItem[] = [
     { icon: <LayoutDashboard size={16} />, label: 'Dashboard',        path: '/dashboard', badge: unreadCount },
-    { icon: <FileText        size={16} />, label: 'Requests',         path: '/requests' },
+    { icon: <FileText        size={16} />, label: 'Requisitions',     path: '/requests' },
     { icon: <Users           size={16} />, label: 'People',           path: '/hr' },
     { icon: <ClipboardList   size={16} />, label: 'Tasks & Targets',  path: '/work' },
     ...(isAccounting ? [{ icon: <DollarSign size={16} />, label: 'Finance', path: '/finance' }] : []),

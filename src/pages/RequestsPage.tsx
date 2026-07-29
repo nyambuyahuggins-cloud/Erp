@@ -32,12 +32,13 @@ export default function RequestsPage() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [form, setForm] = useState({ amount: '', category: '', description: '', justification: '', recurring: 'one-time' })
+  const [form, setForm] = useState({ amount: '', category: '', description: '', justification: '', recurring: 'one-time', deadline: '' })
   const [attachFile, setAttachFile] = useState<File | null>(null)
   const [attachProgress, setAttachProgress] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [actionModal, setActionModal] = useState<any>(null)
   const [actionNote, setActionNote] = useState('')
+  const [selectedPriority, setSelectedPriority] = useState<'low' | 'normal' | 'high' | 'urgent'>('normal')
   const [actionLoading, setActionLoading] = useState(false)
   // Search & filter
   const [search, setSearch] = useState('')
@@ -172,6 +173,7 @@ export default function RequestsPage() {
       is_petty_cash: routing.isPettyCash, is_dual_approval: routing.isDualApproval,
       is_inter_entity: routing.isInterEntity,
       status: 'pending',
+      ...(form.deadline ? { deadline: new Date(form.deadline).toISOString() } : {}),
       ...(attachments.length > 0 ? { attachments } : {})
     }
 
@@ -184,7 +186,7 @@ export default function RequestsPage() {
     })
 
     setShowModal(false)
-    setForm({ amount: '', category: '', description: '', justification: '', recurring: 'one-time' })
+    setForm({ amount: '', category: '', description: '', justification: '', recurring: 'one-time', deadline: '' })
     setAttachFile(null)
     setAttachProgress('')
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -229,7 +231,8 @@ export default function RequestsPage() {
     await dbWrite('funding_requests', 'update', {
       status: newStatus,
       [`${action === 'endorsed' ? 'endorsed' : action === 'approved' ? 'approved' : 'rejection'}_by`]: profile!.id,
-      rejection_reason: action === 'rejected' ? actionNote : null
+      rejection_reason: action === 'rejected' ? actionNote : null,
+      ...(fullyApproved ? { priority: selectedPriority } : {}),
     }, ['id', r.id])
 
     await supabase.from('request_approvals').insert({
@@ -253,6 +256,7 @@ export default function RequestsPage() {
 
     setActionModal(null)
     setActionNote('')
+    setSelectedPriority('normal')
     load()
     setActionLoading(false)
 
@@ -347,9 +351,9 @@ export default function RequestsPage() {
   }
 
   return (
-    <Layout title="Funding Requests" action={
+    <Layout title="Requisitions" action={
       <button className="btn-gold" onClick={() => setShowModal(true)} style={{ gap: '0.5rem' }}>
-        <Plus size={16} /> Submit Request
+        <Plus size={16} /> Submit Requisition
       </button>
     }>
       {staleCount > 0 && (
@@ -493,6 +497,7 @@ export default function RequestsPage() {
                 { label: 'Description', el: <textarea className="input" required value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={2} placeholder="What is this for?" /> },
                 { label: 'Justification', el: <textarea className="input" required value={form.justification} onChange={e => setForm({ ...form, justification: e.target.value })} rows={2} placeholder="Why is this needed?" /> },
                 { label: 'Frequency', el: <select className="input" value={form.recurring} onChange={e => setForm({ ...form, recurring: e.target.value })}><option value="one-time">One-time</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option></select> },
+                { label: 'Deadline (optional)', el: <input className="input" type="date" value={form.deadline} min={new Date().toISOString().slice(0, 10)} onChange={e => setForm({ ...form, deadline: e.target.value })} /> },
               ].map(({ label, el }) => (
                 <div key={label} style={{ marginBottom: '1rem' }}>
                   <label className="form-label">{label}</label>
@@ -586,7 +591,7 @@ export default function RequestsPage() {
           <FocusTrap>
           <div className="card" style={{ width: '100%', maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'var(--text-lead)', margin: 0 }}>Review Request</h3>
+              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'var(--text-lead)', margin: 0 }}>Review Requisition</h3>
               <button onClick={() => setActionModal(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
             </div>
             <div style={{ background: 'var(--bg-800)', borderRadius: 8, padding: '0.875rem', marginBottom: '1rem' }}>
@@ -666,6 +671,13 @@ export default function RequestsPage() {
                 if (mayApprove) {
                   return (
                     <>
+                      <select className="input" value={selectedPriority} onChange={e => setSelectedPriority(e.target.value as any)}
+                        style={{ width: 'auto', fontSize: 'var(--text-small)', padding: '0.5rem 0.75rem' }} title="Priority">
+                        <option value="low">Low priority</option>
+                        <option value="normal">Normal priority</option>
+                        <option value="high">High priority</option>
+                        <option value="urgent">Urgent</option>
+                      </select>
                       <button style={{ background: 'var(--danger-dim)', color: 'var(--danger)', border: '1px solid var(--danger-dim)', borderRadius: 8, padding: '0.625rem 1rem', cursor: canReject ? 'pointer' : 'not-allowed', fontSize: 'var(--text-small)', opacity: canReject ? 1 : 0.5 }} onClick={() => handleAction('rejected')} disabled={actionLoading || !canReject}>Reject</button>
                       <button className="btn-gold" onClick={() => handleAction('approved')} disabled={actionLoading}>Approve</button>
                     </>

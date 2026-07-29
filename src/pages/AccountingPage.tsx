@@ -10,12 +10,12 @@ import { useToast } from '../components/ui/Toast'
 export default function AccountingPage({ embedded }: { embedded?: boolean }) {
   const { profile, post } = useAuth()
   const { toast } = useToast()
-  const [tab, setTab] = useState<'queue' | 'receipts' | 'purchase_orders' | 'interentity' | 'approved'>('queue')
-  const [pendingRequests, setPendingRequests] = useState<any[]>([])
+  const [tab, setTab] = useState<'approved' | 'receipts' | 'purchase_orders' | 'interentity' | 'completed'>('approved')
+  const [awaitingFunding, setAwaitingFunding] = useState<any[]>([])
   const [pendingReceipts, setPendingReceipts] = useState<any[]>([])
   const [remindingId, setRemindingId] = useState<string | null>(null)
   const [interEntityTx, setInterEntityTx] = useState<any[]>([])
-  const [approvedData, setApprovedData] = useState<any[]>([])
+  const [completedData, setCompletedData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showIETModal, setShowIETModal] = useState(false)
   const [entities, setEntities] = useState<any[]>([])
@@ -33,28 +33,45 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
   async function loadAll() {
     setLoading(true)
     const tid = profile!.tenant_id
-    if (tab === 'queue') {
+    if (tab === 'approved') {
+      // Approved by the approval workflow, not yet funded — this is what
+      // accounting works through to decide what gets money first when
+      // there isn't enough budget for everything.
       const { data } = await supabase.from('funding_requests')
         .select('*, user_profiles!requester_id(full_name), entities!entity_id(name)')
-        .eq('tenant_id', tid).in('status', ['pending', 'endorsed']).order('created_at')
-      setPendingRequests(data || [])
+        .eq('tenant_id', tid).eq('status', 'approved')
+        .order('deadline', { ascending: true, nullsFirst: false })
+      const priorityWeight: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 }
+      const sorted = (data || []).sort((a, b) => {
+        const pw = (priorityWeight[a.priority] ?? 2) - (priorityWeight[b.priority] ?? 2)
+        if (pw !== 0) return pw
+        if (a.deadline && b.deadline) return new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+        if (a.deadline) return -1
+        if (b.deadline) return 1
+        return 0
+      })
+      setAwaitingFunding(sorted)
     } else if (tab === 'receipts') {
+      // Funded, waiting on the requester to attach a receipt or on
+      // accounting to review one that's already been uploaded.
       const { data } = await supabase.from('funding_requests')
         .select('*, user_profiles!requester_id(full_name), entities!entity_id(name)')
-        .eq('tenant_id', tid).eq('receipt_status', 'pending')
-        .order('approved_at', { ascending: true })
+        .eq('tenant_id', tid).eq('status', 'funded').in('receipt_status', ['pending', 'uploaded'])
+        .order('funded_at', { ascending: true })
       setPendingReceipts(data || [])
     } else if (tab === 'interentity') {
       const { data } = await supabase.from('inter_entity_transactions')
         .select('*, entities!initiating_entity(name), user_profiles!submitted_by(full_name)')
         .eq('tenant_id', tid).order('created_at', { ascending: false })
       setInterEntityTx(data || [])
-    } else if (tab === 'approved') {
+    } else if (tab === 'completed') {
+      // Fully closed out: funded, and either the receipt was confirmed by
+      // accounting, waived, or was never required in the first place.
       const { data } = await supabase.from('funding_requests')
-        .select('*, user_profiles!requester_id(full_name), entities!entity_id(name)')
-        .eq('tenant_id', tid).in('status', ['approved', 'funded'])
-        .order('approved_at', { ascending: false })
-      setApprovedData(data || [])
+        .select('*, user_profiles!requester_id(full_name), entities!entity_id(name), confirmer:user_profiles!receipt_confirmed_by(full_name)')
+        .eq('tenant_id', tid).eq('status', 'funded').in('receipt_status', ['confirmed', 'waived', 'not_required'])
+        .order('receipt_confirmed_at', { ascending: false, nullsFirst: false })
+      setCompletedData(data || [])
     }
     setLoading(false)
   }
@@ -123,14 +140,70 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
     loadAll()
   }
 
-  function exportApprovedCSV() {
+  // The "close" action — accounting has reviewed the uploaded receipt and
+  // is satisfied it matches the transaction. This is what moves a
+  // requisition from Receipts into Completed.
+  async function confirmReceipt(id: string) {
+    await supabase.from('funding_requests').update({
+      receipt_status: 'confirmed',
+      receipt_confirmed_by: profile!.id,
+      receipt_confirmed_at: new Date().toISOString(),
+    }).eq('id', id)
+    loadAll()
+  }
+
+  function exportCompletedCSV() {
     const rows = [['Ref', 'Date', 'Requester', 'Entity', 'Category', 'Amount', 'Status']]
-    approvedData.forEach(r => rows.push([r.ref, r.approved_at, r.user_profiles?.full_name, r.entities?.name, r.category, r.amount, r.status]))
+    completedData.forEach(r => rows.push([r.ref, r.funded_at, r.user_profiles?.full_name, r.entities?.name, r.category, r.amount, r.status]))
     const csv = rows.map(r => r.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = `approved-requisitions-${new Date().toISOString().slice(0, 7)}.csv`; a.click()
+    const a = document.createElement('a'); a.href = url; a.download = `completed-requisitions-${new Date().toISOString().slice(0, 7)}.csv`; a.click()
     URL.revokeObjectURL(url)
+  }
+
+  // Opens a print-friendly window with the requisition's full detail and
+  // its receipt, so accounting can keep a physical copy on file if they want.
+  function printRequisition(r: any) {
+    const w = window.open('', '_blank')
+    if (!w) return
+    const receiptSrc = r.receipt_url || r.attachments?.[0]?.url
+    w.document.write(`
+      <html>
+        <head>
+          <title>${r.ref}</title>
+          <style>
+            body { font-family: 'DM Sans', Arial, sans-serif; padding: 2rem; color: #1a1814; }
+            h1 { font-size: 1.25rem; margin: 0 0 0.25rem; }
+            .meta { color: #555; font-size: 0.85rem; margin-bottom: 1.5rem; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+            td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #ddd; font-size: 0.9rem; }
+            td:first-child { color: #555; width: 160px; }
+            img { max-width: 100%; border: 1px solid #ccc; margin-top: 1rem; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <h1>Requisition ${r.ref}</h1>
+          <p class="meta">Printed ${new Date().toLocaleString()}</p>
+          <table>
+            <tr><td>Requester</td><td>${r.user_profiles?.full_name || ''}</td></tr>
+            <tr><td>Entity</td><td>${r.entities?.name || ''}</td></tr>
+            <tr><td>Category</td><td>${r.category || ''}</td></tr>
+            <tr><td>Description</td><td>${r.description || ''}</td></tr>
+            <tr><td>Amount</td><td>USD ${parseFloat(r.amount).toFixed(2)}</td></tr>
+            <tr><td>Priority</td><td>${r.priority || 'normal'}</td></tr>
+            <tr><td>Deadline</td><td>${r.deadline ? new Date(r.deadline).toLocaleDateString() : '—'}</td></tr>
+            <tr><td>Funded</td><td>${r.funded_at ? new Date(r.funded_at).toLocaleString() : '—'}</td></tr>
+            <tr><td>Receipt confirmed by</td><td>${r.confirmer?.full_name || '—'}</td></tr>
+            <tr><td>Receipt confirmed</td><td>${r.receipt_confirmed_at ? new Date(r.receipt_confirmed_at).toLocaleString() : '—'}</td></tr>
+          </table>
+          ${receiptSrc ? `<p><strong>Attached receipt:</strong></p><img src="${receiptSrc}" />` : '<p><em>No receipt attached.</em></p>'}
+          <script>window.onload = () => window.print()</script>
+        </body>
+      </html>
+    `)
+    w.document.close()
   }
 
   function statusBadge(s: string) {
@@ -152,7 +225,7 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <TabBar>
-          {(['queue', 'receipts', 'purchase_orders', 'interentity', 'approved'] as const).map(t => (
+          {(['approved', 'receipts', 'purchase_orders', 'interentity', 'completed'] as const).map(t => (
             <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)} style={{ textTransform: 'capitalize' }}>
               {t === 'interentity' ? 'Inter-Entity' : t === 'purchase_orders' ? 'Purchase Orders' : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
@@ -164,8 +237,8 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
               <Plus size={16} /> New Transaction
             </button>
           )}
-          {tab === 'approved' && (
-            <button className="btn-ghost" onClick={exportApprovedCSV} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {tab === 'completed' && (
+            <button className="btn-ghost" onClick={exportCompletedCSV} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Download size={15} /> Export CSV
             </button>
           )}
@@ -175,14 +248,15 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>
-        ) : tab === 'queue' ? (
+        ) : tab === 'approved' ? (
           <div style={{ overflowX: 'auto' }}>
             <table className="data-table">
-              <thead><tr><th>Ref</th><th>Requester</th><th>Entity</th><th>Amount</th><th>Category</th><th>Status</th><th>Age</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Ref</th><th>Requester</th><th>Entity</th><th>Amount</th><th>Category</th><th>Priority</th><th>Deadline</th><th>Actions</th></tr></thead>
               <tbody>
-                {pendingRequests.length === 0 ? <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No pending requests</td></tr>
-                  : pendingRequests.map(r => {
-                    const daysOld = Math.floor((Date.now() - new Date(r.created_at).getTime()) / 86400000)
+                {awaitingFunding.length === 0 ? <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>Nothing approved and awaiting funds right now</td></tr>
+                  : awaitingFunding.map(r => {
+                    const priorityColor: Record<string, string> = { urgent: 'var(--danger)', high: 'var(--warning)', normal: 'var(--text-muted)', low: 'var(--text-muted)' }
+                    const overdue = r.deadline && new Date(r.deadline) < new Date()
                     return (
                       <tr key={r.id}>
                         <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)', color: 'var(--gold)' }}>{r.ref}</td>
@@ -190,12 +264,10 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
                         <td style={{ color: 'var(--text-muted)' }}>{r.entities?.name}</td>
                         <td style={{ fontFamily: "'JetBrains Mono', monospace" }}>USD {parseFloat(r.amount).toFixed(2)}</td>
                         <td>{r.category}</td>
-                        <td>{statusBadge(r.status)}</td>
-                        <td style={{ color: daysOld >= 14 ? 'var(--warning)' : 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{daysOld}d {daysOld >= 14 ? '⚠️' : ''}</td>
+                        <td style={{ color: priorityColor[r.priority] || 'var(--text-muted)', fontWeight: r.priority === 'urgent' || r.priority === 'high' ? 700 : 400, textTransform: 'capitalize', fontSize: 'var(--text-small)' }}>{r.priority || 'normal'}</td>
+                        <td style={{ color: overdue ? 'var(--danger)' : 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{r.deadline ? new Date(r.deadline).toLocaleDateString() : '—'} {overdue ? '⚠️' : ''}</td>
                         <td>
-                          {r.status === 'approved' && (
-                            <button className="btn-gold" style={{ padding: '0.3rem 0.7rem', fontSize: 'var(--text-micro)' }} onClick={() => markFunded(r.id)}>Mark Funded</button>
-                          )}
+                          <button className="btn-gold" style={{ padding: '0.3rem 0.7rem', fontSize: 'var(--text-micro)' }} onClick={() => markFunded(r.id)}>Mark Funded</button>
                         </td>
                       </tr>
                     )
@@ -206,12 +278,13 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
         ) : tab === 'receipts' ? (
           <div style={{ overflowX: 'auto' }}>
             <table className="data-table">
-              <thead><tr><th>Ref</th><th>Requester</th><th>Entity</th><th>Amount</th><th>Category</th><th>Awaiting since</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Ref</th><th>Requester</th><th>Entity</th><th>Amount</th><th>Category</th><th>Status</th><th>Awaiting since</th><th>Actions</th></tr></thead>
               <tbody>
-                {pendingReceipts.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No outstanding receipts — all clear 🎉</td></tr>
+                {pendingReceipts.length === 0 ? <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No outstanding receipts — all clear 🎉</td></tr>
                   : pendingReceipts.map(r => {
-                    const since = r.approved_at || r.funded_at || r.created_at
+                    const since = r.funded_at || r.approved_at || r.created_at
                     const daysOld = Math.floor((Date.now() - new Date(since).getTime()) / 86400000)
+                    const receiptSrc = r.receipt_url || r.attachments?.[0]?.url
                     return (
                       <tr key={r.id}>
                         <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)', color: 'var(--gold)' }}>{r.ref}</td>
@@ -219,17 +292,30 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
                         <td style={{ color: 'var(--text-muted)' }}>{r.entities?.name}</td>
                         <td style={{ fontFamily: "'JetBrains Mono', monospace" }}>USD {parseFloat(r.amount).toFixed(2)}</td>
                         <td>{r.category}</td>
+                        <td>{r.receipt_status === 'uploaded' ? <span style={{ color: 'var(--success)', fontSize: 'var(--text-small)' }}>🧾 Uploaded</span> : <span style={{ color: 'var(--warning)', fontSize: 'var(--text-small)' }}>Awaiting</span>}</td>
                         <td style={{ color: daysOld >= 7 ? 'var(--warning)' : 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{daysOld}d {daysOld >= 7 ? '⚠️' : ''}</td>
                         <td>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            <button className="btn-ghost" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)' }}
-                              onClick={() => remindReceipt(r)} disabled={remindingId === r.id}>
-                              {remindingId === r.id ? 'Sending…' : '🔔 Remind'}
-                            </button>
-                            <button className="btn-ghost" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)', color: 'var(--success)' }}
-                              onClick={() => resolveReceipt(r.id, 'uploaded')}>Mark Received</button>
-                            <button className="btn-ghost" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}
-                              onClick={() => resolveReceipt(r.id, 'waived')}>Waive</button>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                            {r.receipt_status === 'uploaded' ? (
+                              <>
+                                {receiptSrc && <a href={receiptSrc} target="_blank" rel="noreferrer" style={{ fontSize: 'var(--text-micro)', color: 'var(--info)' }}>View receipt</a>}
+                                <button className="btn-gold" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)' }}
+                                  onClick={() => confirmReceipt(r.id)}>Confirm &amp; Close</button>
+                                <button className="btn-ghost" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}
+                                  onClick={() => resolveReceipt(r.id, 'waived')}>Waive</button>
+                              </>
+                            ) : (
+                              <>
+                                <button className="btn-ghost" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)' }}
+                                  onClick={() => remindReceipt(r)} disabled={remindingId === r.id}>
+                                  {remindingId === r.id ? 'Sending…' : '🔔 Remind'}
+                                </button>
+                                <button className="btn-ghost" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)', color: 'var(--success)' }}
+                                  onClick={() => resolveReceipt(r.id, 'uploaded')}>Mark Received</button>
+                                <button className="btn-ghost" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}
+                                  onClick={() => resolveReceipt(r.id, 'waived')}>Waive</button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -267,18 +353,21 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="data-table">
-              <thead><tr><th>Ref</th><th>Requester</th><th>Entity</th><th>Category</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+              <thead><tr><th>Ref</th><th>Requester</th><th>Entity</th><th>Category</th><th>Amount</th><th>Funded</th><th>Closed by</th><th></th></tr></thead>
               <tbody>
-                {approvedData.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No approved requisitions found</td></tr>
-                  : approvedData.map(r => (
+                {completedData.length === 0 ? <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No completed requisitions yet</td></tr>
+                  : completedData.map(r => (
                     <tr key={r.id}>
                       <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)', color: 'var(--gold)' }}>{r.ref}</td>
                       <td>{r.user_profiles?.full_name}</td>
                       <td style={{ color: 'var(--text-muted)' }}>{r.entities?.name}</td>
                       <td>{r.category}</td>
                       <td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>USD {parseFloat(r.amount).toFixed(2)}</td>
-                      <td>{statusBadge(r.status)}</td>
-                      <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{r.approved_at ? new Date(r.approved_at).toLocaleDateString() : '—'}</td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{r.funded_at ? new Date(r.funded_at).toLocaleDateString() : '—'}</td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{r.confirmer?.full_name || (r.receipt_status === 'waived' ? 'Waived' : '—')}</td>
+                      <td>
+                        <button className="btn-ghost" style={{ padding: '0.3rem 0.6rem', fontSize: 'var(--text-micro)' }} onClick={() => printRequisition(r)}>🖨 Print</button>
+                      </td>
                     </tr>
                   ))}
               </tbody>

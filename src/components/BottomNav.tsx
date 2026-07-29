@@ -9,7 +9,7 @@ import {
 
 const PRIMARY = [
   { icon: <LayoutDashboard size={20} />, label: 'Dashboard', path: '/dashboard' },
-  { icon: <FileText size={20} />,        label: 'Requests',  path: '/requests' },
+  { icon: <FileText size={20} />,        label: 'Requisitions', path: '/requests' },
   { icon: <Users size={20} />,           label: 'People',    path: '/hr' },
   { icon: <ClipboardList size={20} />,   label: 'Tasks',     path: '/work' },
 ]
