@@ -138,6 +138,11 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
     return <span className={`badge ${map[s] || 'badge-draft'}`}>{s}</span>
   }
 
+  if (!post) {
+    const spinner = <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>
+    return embedded ? spinner : <Layout title="Accounting">{spinner}</Layout>
+  }
+
   if (!canAccess) {
     if (embedded) return <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Access restricted.</div>
     return <Layout title="Accounting"><div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Access restricted.</div></Layout>

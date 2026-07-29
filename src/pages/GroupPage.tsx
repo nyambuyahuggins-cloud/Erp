@@ -14,6 +14,12 @@ export default function GroupPage() {
   const level     = post?.hierarchy_levels
   const isExec    = level && level.rank <= 1
 
+  if (!post) return (
+    <Layout title="Group">
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>
+    </Layout>
+  )
+
   if (!isExec) return (
     <Layout title="Group">
       <div style={{ textAlign:'center', padding:'3rem', color:'var(--text-muted)' }}>Executive access required.</div>

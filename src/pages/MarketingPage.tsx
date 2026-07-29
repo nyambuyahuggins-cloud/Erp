@@ -331,7 +331,7 @@ export default function MarketingPage() {
 
         {/* Desktop nav */}
         <nav className="mkt-nav-desktop">
-          {['Features','Pricing','About'].map(item => (
+          {['Features','Demo','About'].map(item => (
             <a key={item} href={`#${item.toLowerCase()}`} style={{ fontSize: 'var(--text-small)', color: 'var(--text-muted)', textDecoration: 'none', transition: 'color var(--t-base)' }}
               onMouseEnter={e => (e.target as HTMLElement).style.color = 'var(--text-primary)'}
               onMouseLeave={e => (e.target as HTMLElement).style.color = 'var(--text-muted)'}>{item}</a>
@@ -350,7 +350,7 @@ export default function MarketingPage() {
 
       {menuOpen && (
         <div style={{ position: 'fixed', top: 60, left: 0, right: 0, zIndex: 99, background: 'var(--bg-850)', borderBottom: '1px solid var(--border)', padding: 'var(--sp-4) var(--sp-6)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-          {['Features','Pricing','About'].map(item => (
+          {['Features','Demo','About'].map(item => (
             <a key={item} href={`#${item.toLowerCase()}`} onClick={() => setMenuOpen(false)} style={{ color: 'var(--text-primary)', textDecoration: 'none', fontSize: 'var(--text-body)', fontWeight: 500 }}>{item}</a>
           ))}
           <a href="/login" onClick={() => setMenuOpen(false)} style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: 'var(--text-small)' }}>Sign in</a>
@@ -482,7 +482,7 @@ export default function MarketingPage() {
       </div>
 
       {/* ── PRICING ───────────────────────────────────────────────── */}
-      <section id="pricing" style={{ maxWidth: 1040, margin: '0 auto', padding: 'var(--sp-16) var(--sp-6)' }}>
+      <section id="demo" style={{ maxWidth: 1040, margin: '0 auto', padding: 'var(--sp-16) var(--sp-6)' }}>
         <div style={{ textAlign: 'center', marginBottom: 'var(--sp-10)' }}>
           <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 'var(--text-h2)', margin: '0 0 var(--sp-3)' }}>Simple, honest pricing</h2>
           <p style={{ color: 'var(--text-secondary)', margin: '0 auto', maxWidth: 440, fontSize: 'var(--text-small)' }}>First month free on every plan. Prices shown at sign-up, not here.</p>

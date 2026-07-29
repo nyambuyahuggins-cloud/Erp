@@ -14,6 +14,7 @@ import PlanSelectPage from './pages/PlanSelectPage'
 import SubdomainPage from './pages/SubdomainPage'
 import { ToastProvider } from './components/ui/Toast'
 import DemoPage from './pages/DemoPage'
+import { isDemoSession } from './components/DemoPersonaSwitcher'
 import DashboardPage from './pages/DashboardPage'
 import RequestsPage from './pages/RequestsPage'
 import WorkPage from './pages/WorkPage'
@@ -65,7 +66,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
-  const { session, loading, tenant } = useAuth()
+  const { session, loading, tenant, user } = useAuth()
   if (loading) return <Spin />
 
   // After login: skip plan gate for demo tenant
@@ -73,15 +74,19 @@ function AppRoutes() {
   const postAuthDest = session && tenant && !tenant.plan_confirmed && tenant.id !== DEMO_TENANT
     ? '/onboarding/plan'
     : '/dashboard'
+  // A demo session shouldn't trap someone on the marketing site — they may
+  // want to read more or try a different tier, not get bounced straight
+  // back into the demo dashboard every time they hit "/".
+  const isDemo = isDemoSession(user?.email)
 
   return (
     <>
       <ScrollManager />
       <Routes>
         {/* Public */}
-        <Route path="/"         element={session ? <Navigate to={postAuthDest} replace /> : <MarketingPage />} />
-        <Route path="/login"    element={session ? <Navigate to={postAuthDest} replace /> : <LoginPage />} />
-        <Route path="/register" element={session ? <Navigate to={postAuthDest} replace /> : <RegisterPage />} />
+        <Route path="/"         element={session && !isDemo ? <Navigate to={postAuthDest} replace /> : <MarketingPage />} />
+        <Route path="/login"    element={session && !isDemo ? <Navigate to={postAuthDest} replace /> : <LoginPage />} />
+        <Route path="/register" element={session && !isDemo ? <Navigate to={postAuthDest} replace /> : <RegisterPage />} />
         <Route path="/forgot-password" element={session ? <Navigate to={postAuthDest} replace /> : <ForgotPasswordPage />} />
         {/* No session redirect here: the recovery link itself establishes a
             temporary session, which would otherwise bounce the user straight

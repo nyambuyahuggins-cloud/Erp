@@ -125,7 +125,7 @@ function OnboardingTab({ profile, tenant, isExec }: any) {
   const [inviteError, setInviteError] = useState<string | null>(null)
 
   function blankLevel() {
-    return { name: '', rank: (levels.length ? Math.max(...levels.map(l => l.rank)) + 1 : 1), can_approve: false, can_endorse: false, can_set_targets: true, can_assign_tasks: true, can_see_budgets: false, can_see_hierarchy: false, is_accounting: false, is_hr: false, is_it_admin: false, petty_cash_limit: 15, dual_approval_threshold: 999 }
+    return { name: '', rank: (levels.length ? Math.max(...levels.map(l => l.rank)) + 1 : 1), can_approve: false, can_endorse: false, can_set_targets: true, can_assign_tasks: true, can_see_budgets: false, can_see_hierarchy: false, is_accounting: false, is_hr: false, is_it_admin: false }
   }
   function blankPost() {
     return { title: '', entity_id: entities[0]?.id || '', level_id: levels[0]?.id || '', dept_manager_post_id: '' }
@@ -292,17 +292,16 @@ function OnboardingTab({ profile, tenant, isExec }: any) {
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table className="data-table">
-              <thead><tr><th>Rank</th><th>Name</th><th>Approve</th><th>Endorse</th><th>Petty Cash</th><th>Dual Approval</th><th></th></tr></thead>
+              <thead><tr><th>Rank</th><th>Name</th><th>Approve</th><th>Endorse</th><th>Posts using it</th><th></th></tr></thead>
               <tbody>
-                {levels.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No ranks yet — add your first one.</td></tr>
+                {levels.length === 0 ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No ranks yet — add your first one.</td></tr>
                   : levels.map(l => (
                     <tr key={l.id}>
                       <td style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--gold)' }}>{l.rank}</td>
                       <td style={{ fontWeight: 500 }}>{l.name}</td>
                       <td>{l.can_approve ? <CheckCircle size={14} style={{ color: 'var(--success)' }} /> : '—'}</td>
                       <td>{l.can_endorse ? <CheckCircle size={14} style={{ color: 'var(--info)' }} /> : '—'}</td>
-                      <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)' }}>USD {parseFloat(l.petty_cash_limit).toFixed(2)}</td>
-                      <td style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-small)' }}>USD {parseFloat(l.dual_approval_threshold).toFixed(2)}</td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{posts.filter(p => p.level_id === l.id).length}</td>
                       <td>
                         <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                           <button onClick={() => openLevel(l)} title="Edit" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><Pencil size={14} /></button>
@@ -314,6 +313,9 @@ function OnboardingTab({ profile, tenant, isExec }: any) {
               </tbody>
             </table>
           </div>
+          <p style={{ margin: '0.75rem 0 0', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>
+            Petty cash and dual-approval thresholds are set once for the whole company under <strong>Approval Matrix</strong>, not per rank — that's what actually drives routing.
+          </p>
         </div>
       ) : (
         <div>
@@ -366,17 +368,6 @@ function OnboardingTab({ profile, tenant, isExec }: any) {
               </div>
             </div>
             <p style={{ margin: '0 0 0.5rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>Lower tier number = more senior (0 is the top of the company).</p>
-
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.875rem' }}>
-              <div style={{ flex: 1 }}>
-                <label className="form-label">Petty cash limit (USD)</label>
-                <input className="input" type="number" min={0} step="0.01" value={levelForm.petty_cash_limit} onChange={e => setLevelForm({ ...levelForm, petty_cash_limit: parseFloat(e.target.value) || 0 })} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label className="form-label">Dual-approval threshold (USD)</label>
-                <input className="input" type="number" min={0} step="0.01" value={levelForm.dual_approval_threshold} onChange={e => setLevelForm({ ...levelForm, dual_approval_threshold: parseFloat(e.target.value) || 0 })} />
-              </div>
-            </div>
 
             <p style={{ margin: '0 0 0.5rem', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>What this rank can do</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1.25rem' }}>

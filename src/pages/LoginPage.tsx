@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { Shield, Eye, EyeOff, Fingerprint } from 'lucide-react'
+import { Shield, Eye, EyeOff, Fingerprint, ArrowLeft } from 'lucide-react'
 import { detectSubdomain, getTenantBySubdomain } from '../lib/subdomain'
 
 export default function LoginPage() {
@@ -76,6 +76,14 @@ export default function LoginPage() {
       <div style={{
         width: '100%', maxWidth: 380, position: 'relative', zIndex: 1
       }}>
+        <button onClick={() => navigate('/')} style={{
+          display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
+          color: 'var(--text-muted)', cursor: 'pointer', fontSize: 'var(--text-small)', marginBottom: '1.5rem',
+          padding: 0,
+        }}>
+          <ArrowLeft size={16} /> Back to vela.co.zw
+        </button>
+
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           {subdomainInfo?.logo_url ? (

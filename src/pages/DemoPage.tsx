@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Shield, Building2, Tractor, HardHat, ShoppingCart, Hotel } from 'lucide-react'
 
-const DEMO_ACCOUNTS = {
+export const DEMO_ACCOUNTS = {
   enterprise: { email: 'demo@velaerp.app',         password: 'VelaDemo2025!', label: 'Enterprise',   desc: 'Full access · All 4 companies · Analytics · Admin' },
   group:      { email: 'demo-group@velaerp.app',   password: 'VelaDemo2025!', label: 'Group',        desc: 'All 4 companies · Group reports · Consolidation' },
   starter:    { email: 'demo-starter@velaerp.app', password: 'VelaDemo2025!', label: 'Starter',      desc: 'Single company view · Core modules' },
@@ -130,7 +130,7 @@ export default function DemoPage() {
             All data is fictional and resets automatically every 24 hours. You can do everything — approve requests, manage leave, track compliance.
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem', flexWrap: 'wrap' }}>
-            <button onClick={() => navigate('/register')} className="btn-gold" style={{ fontSize: 'var(--text-small)' }}>
+            <button onClick={async () => { await supabase.auth.signOut(); navigate('/register') }} className="btn-gold" style={{ fontSize: 'var(--text-small)' }}>
               Start Free →
             </button>
             <button onClick={() => navigate('/')} className="btn-ghost" style={{ fontSize: 'var(--text-small)' }}>

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { ChevronDown, Megaphone, CalendarClock, Plus, X } from 'lucide-react'
 import SyncStatusBadge from './SyncStatusBadge'
 import DemoPersonaSwitcher, { isDemoSession } from './DemoPersonaSwitcher'
+import { DEMO_ACCOUNTS } from '../pages/DemoPage'
 import { useNoticesTray } from '../contexts/NoticesTrayContext'
 import { audit } from '../lib/audit'
 import { getPlanLimits } from '../lib/planEnforcement'
@@ -35,6 +36,16 @@ export default function EntityContextBar() {
   const [noticeCount,  setNoticeCount]  = useState(0)
   const [complianceDot,setComplianceDot]= useState<'overdue' | 'upcoming' | null>(null)
   const [countdown,    setCountdown]    = useState(msUntilReset())
+  const [switchingTier, setSwitchingTier] = useState(false)
+
+  async function switchDemoTier(tier: keyof typeof DEMO_ACCOUNTS) {
+    if (switchingTier) return
+    setSwitchingTier(true)
+    const { email, password } = DEMO_ACCOUNTS[tier]
+    await supabase.auth.signOut()
+    await supabase.auth.signInWithPassword({ email, password })
+    window.location.href = '/dashboard'
+  }
   const [showUpload,   setShowUpload]   = useState(false)
   const [uploading,    setUploading]    = useState(false)
   const [uploadForm,   setUploadForm]   = useState({ document_type: 'general' as DocType, description: '', entity_id: '' })
@@ -169,12 +180,30 @@ export default function EntityContextBar() {
           gap: '0.5rem', flexWrap: 'wrap',
           background: 'linear-gradient(90deg, var(--gold-dim), var(--gold-wash))',
         }}>
-          <DemoPersonaSwitcher currentEmail={user?.email} effectivePlan={effectivePlan} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 3, background: 'var(--surface)', borderRadius: 999, padding: 2 }}>
+              {(Object.keys(DEMO_ACCOUNTS) as (keyof typeof DEMO_ACCOUNTS)[]).map(tierKey => {
+                const currentTier = (Object.entries(DEMO_ACCOUNTS).find(([, acc]) => acc.email === user?.email)?.[0])
+                return (
+                  <button key={tierKey} onClick={() => switchDemoTier(tierKey)} disabled={switchingTier}
+                    style={{
+                      border: 'none', borderRadius: 999, padding: '0.2rem 0.6rem', cursor: switchingTier ? 'default' : 'pointer',
+                      fontSize: 'var(--text-micro)', fontWeight: 600,
+                      background: tierKey === currentTier ? 'var(--gold)' : 'transparent',
+                      color: tierKey === currentTier ? 'var(--gold-text)' : 'var(--text-muted)',
+                    }}>
+                    {DEMO_ACCOUNTS[tierKey].label}
+                  </button>
+                )
+              })}
+            </div>
+            <DemoPersonaSwitcher currentEmail={user?.email} effectivePlan={effectivePlan} />
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' }}>
             <span style={{ fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>
               Resets in <strong style={{ color: 'var(--gold)' }}>{fmt(countdown)}</strong>
             </span>
-            <button onClick={() => navigate('/register')}
+            <button onClick={async () => { await supabase.auth.signOut(); navigate('/register') }}
               style={{ background: 'var(--gold)', color: 'var(--gold-text)', fontWeight: 700, border: 'none', borderRadius: 6, padding: '0.25rem 0.75rem', cursor: 'pointer', fontSize: 'var(--text-micro)' }}>
               Start Free →
             </button>
