@@ -167,7 +167,25 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
   function printRequisition(r: any) {
     const w = window.open('', '_blank')
     if (!w) return
-    const receiptSrc = r.receipt_url || r.attachments?.[0]?.url
+    // Every attachment on the requisition, plus the receipt if there's one
+    // that isn't already in that list — all of it goes out together so a
+    // physical copy has everything, not just whichever file happened to be
+    // first.
+    const docs: { name: string; url: string; type?: string }[] = []
+    if (Array.isArray(r.attachments)) {
+      for (const att of r.attachments) if (att?.url) docs.push({ name: att.name || 'Attachment', url: att.url, type: att.type })
+    }
+    if (r.receipt_url && !docs.some(d => d.url === r.receipt_url)) {
+      docs.push({ name: 'Receipt', url: r.receipt_url })
+    }
+    const docsHtml = docs.length === 0
+      ? '<p><em>No documents attached.</em></p>'
+      : docs.map(d => {
+          const isImage = d.type?.startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(d.url)
+          return isImage
+            ? `<p><strong>${d.name}</strong></p><img src="${d.url}" />`
+            : `<p><strong>${d.name}:</strong> <a href="${d.url}">${d.url}</a></p>`
+        }).join('')
     w.document.write(`
       <html>
         <head>
@@ -198,7 +216,7 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
             <tr><td>Receipt confirmed by</td><td>${r.confirmer?.full_name || '—'}</td></tr>
             <tr><td>Receipt confirmed</td><td>${r.receipt_confirmed_at ? new Date(r.receipt_confirmed_at).toLocaleString() : '—'}</td></tr>
           </table>
-          ${receiptSrc ? `<p><strong>Attached receipt:</strong></p><img src="${receiptSrc}" />` : '<p><em>No receipt attached.</em></p>'}
+          ${docsHtml}
           <script>window.onload = () => window.print()</script>
         </body>
       </html>

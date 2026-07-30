@@ -183,8 +183,6 @@ export function IntegrationsPage() {
   }
 
   const typeConfig: Record<string, { label: string; description: string; fromTable: string }> = {
-    inventory_bom: { label: 'Bill of Materials (BOM)', description: 'Multi-level BOM management for manufacturing and assembly.', fromTable: 'enterprise' },
-    inventory_mrp: { label: 'Material Requirements Planning', description: 'Automated procurement planning based on demand forecasts.', fromTable: 'enterprise' },
     reporting_powerbi: { label: 'Power BI Connector', description: 'Push VELA data to Microsoft Power BI for custom dashboards.', fromTable: 'enterprise' },
     reporting_custom: { label: 'Custom Report Builder', description: 'Build and schedule custom reports beyond the standard templates.', fromTable: 'enterprise' },
     rest_api: { label: 'REST API Access', description: 'Full CRUD REST API with API key authentication per subsidiary.', fromTable: 'enterprise' },
@@ -265,7 +263,6 @@ export function ReportsPage() {
   const REPORT_TYPES = [
     { value: 'consolidated_pl', label: 'Consolidated P&L' },
     { value: 'entity_summary', label: 'Entity Summary' },
-    { value: 'inventory', label: 'Inventory Report' },
     { value: 'audit', label: 'Audit Log Export' },
   ]
 

@@ -238,7 +238,7 @@ function ExpenseClaimsTab({ profile, post, entityId }: any) {
     setLoading(true)
     const q = supabase
       .from('expense_claims')
-      .select('*, user_profiles!claimant_id(full_name), approver:user_profiles!approver_id(full_name)')
+      .select('*, user_profiles!claimant_id(full_name), approver:user_profiles!approver_id(full_name), funding_requests!funding_request_id(status, funded_at)')
       .eq('tenant_id', profile.tenant_id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -265,7 +265,27 @@ function ExpenseClaimsTab({ profile, post, entityId }: any) {
   }
 
   async function action(id: string, status: 'approved' | 'rejected') {
+    const claim = claims.find(c => c.id === id)
     await supabase.from('expense_claims').update({ status, approver_id: profile.id, approved_at: new Date().toISOString() }).eq('id', id)
+    if (status === 'approved' && claim) {
+      const ref = `FR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`
+      const { data: fr } = await supabase.from('funding_requests').insert({
+        tenant_id: profile.tenant_id,
+        ref,
+        requester_id: claim.claimant_id,
+        entity_id: claim.entity_id,
+        amount: claim.amount,
+        category: `Expense Reimbursement — ${claim.category}`,
+        description: claim.description || 'Expense claim reimbursement',
+        justification: 'Auto-created from an approved expense claim so accounting can allocate funds.',
+        status: 'approved',
+        approved_by: profile.id,
+        approved_at: new Date().toISOString(),
+        receipt_status: claim.receipt_url ? 'uploaded' : 'pending',
+        receipt_url: claim.receipt_url || null,
+      }).select().single()
+      if (fr) await supabase.from('expense_claims').update({ funding_request_id: fr.id }).eq('id', id)
+    }
     await load()
   }
 
@@ -294,7 +314,14 @@ function ExpenseClaimsTab({ profile, post, entityId }: any) {
                 <td style={{ color:'var(--text-muted)' }}>{c.category}</td>
                 <td style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--gold)', fontWeight:600 }}>{c.currency} {parseFloat(c.amount).toFixed(2)}</td>
                 <td style={{ color:'var(--text-muted)', maxWidth:200 }}>{c.description}</td>
-                <td><span className={`badge ${statusColor[c.status]||'badge-draft'}`}>{c.status}</span></td>
+                <td>
+                  <span className={`badge ${statusColor[c.status]||'badge-draft'}`}>{c.status}</span>
+                  {c.funding_requests && (
+                    <span style={{ display: 'block', marginTop: 4, fontSize: 'var(--text-micro)', color: c.funding_requests.status === 'funded' ? 'var(--success)' : 'var(--text-muted)' }}>
+                      {c.funding_requests.status === 'funded' ? '💰 Funded' : '→ Sent to Accounting'}
+                    </span>
+                  )}
+                </td>
                 <td style={{ color:'var(--text-muted)', fontSize:'0.8rem' }}>{new Date(c.created_at).toLocaleDateString()}</td>
                 <td>
                   <div style={{ display:'flex', gap:4 }}>

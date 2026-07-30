@@ -21,7 +21,7 @@ const ADDON_CATALOG = [
   { key: 'whatsapp_api',    label: 'WhatsApp Business API',     cost: 15,   price: 20,   unit: '/mo',    desc: 'Dedicated phone number for approval alerts, notice broadcasts, and compliance reminders via WhatsApp.' },
   { key: 'email_api',       label: 'Email API (SendGrid)',       cost: 15,   price: 20,   unit: '/mo',    desc: 'Transactional emails and scheduled report delivery.' },
   { key: 'ocr_api',         label: 'OCR API',                   cost: 30,   price: 39,   unit: '/mo',    desc: 'Scan receipts for Expense Claims and ID documents for HR onboarding. Includes 500 scans/mo; extra scans $0.03 each.' },
-  { key: 'google_maps',     label: 'Google Maps API',            cost: 10,   price: 13,   unit: '/mo',    desc: 'Location check-ins for field staff and fleet vehicles.' },
+  { key: 'google_maps',     label: 'Google Maps API',            cost: 10,   price: 13,   unit: '/mo',    desc: 'Location check-ins for field staff at branches.' },
 ] as const
 
 type AddonKey = typeof ADDON_CATALOG[number]['key']

@@ -36,7 +36,7 @@ const ADDON_CATALOG = [
   { key: 'whatsapp_api',  label: 'WhatsApp Business API',price: 20,  unit: '/mo', desc: 'Approval alerts, notice broadcasts, and compliance reminders via WhatsApp.' },
   { key: 'email_api',     label: 'Email API (SendGrid)',  price: 20,  unit: '/mo', desc: 'Transactional emails and scheduled PDF report delivery.' },
   { key: 'ocr_api',       label: 'OCR API',               price: 39,  unit: '/mo', desc: 'Scan receipts for Expense Claims and ID docs for HR onboarding. 500 scans/mo.' },
-  { key: 'google_maps',   label: 'Google Maps API',        price: 13,  unit: '/mo', desc: 'Location check-ins for field staff and fleet vehicles.' },
+  { key: 'google_maps',   label: 'Google Maps API',        price: 13,  unit: '/mo', desc: 'Location check-ins for field staff at branches.' },
 ] as const
 
 const CUSTOM_TIERS = [
