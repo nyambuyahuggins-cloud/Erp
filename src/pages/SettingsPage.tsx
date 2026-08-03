@@ -3,13 +3,10 @@ import Layout from '../components/Layout'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { supabase } from '../lib/supabase'
-import { useNavigate } from 'react-router-dom'
 import {
   Sun, Moon, User, Lock, Eye,
   Shield, Upload, Plus, Trash2, CheckCircle, X, Fingerprint
 } from 'lucide-react'
-import { getPlanLimits } from '../lib/planEnforcement'
-import type { Plan } from '../lib/planEnforcement'
 import TabBar from '../components/TabBar'
 import { isLight } from '../lib/color'
 
@@ -715,66 +712,6 @@ function SecurityTab({ profile }: any) {
           {pkLoading ? 'Follow the prompt…' : 'Add a passkey'}
         </button>
       </div>
-    </div>
-  )
-}
-
-/* ── Subscription Tab ─────────────────────────────────────────────── */
-function SubscriptionTab({ tenant, navigate }: any) {
-  const plan = tenant?.plan || 'starter'
-  const limits = getPlanLimits(plan as Plan)
-
-  const planDescriptions: Record<string, { price: string; features: string[] }> = {
-    starter: { price: '$49/mo', features: ['1 company', '5 branches', '50 employees', 'Basic PWA', 'Email support'] },
-    group: { price: '$199/mo', features: ['5 companies', '50 branches', 'Unlimited employees', 'Consolidated reporting', 'Inter-company transfers', 'WhatsApp support'] },
-    enterprise: { price: '$399/mo base', features: ['Unlimited companies', 'Unlimited branches', 'Premium support', 'Full API access', 'White-label', 'All add-ons available'] },
-  }
-
-  const info = planDescriptions[plan] || planDescriptions.starter
-
-  return (
-    <div style={{ maxWidth: 540, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      <div className="card" style={{ borderColor: 'var(--gold)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <p style={{ margin: '0 0 0.25rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Current Plan</p>
-            <p style={{ margin: 0, fontFamily: "'Playfair Display', serif", fontSize: 'var(--text-h2)', fontWeight: 700, color: 'var(--gold)', textTransform: 'capitalize' }}>{plan}</p>
-            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>{info.price}</p>
-          </div>
-          <span style={{ fontSize: 'var(--text-micro)', fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: 'var(--gold-ring)', color: 'var(--gold)', border: '1px solid var(--gold-border)', textTransform: 'uppercase' }}>{plan}</span>
-        </div>
-        <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {info.features.map(f => (
-            <span key={f} style={{ fontSize: 'var(--text-micro)', padding: '3px 9px', borderRadius: 999, background: 'var(--success-dim)', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <CheckCircle size={11} /> {f}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="card">
-        <h3 style={{ margin: '0 0 1rem', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Feature Flags</h3>
-        {[
-          { label: 'Group Oversight & Hierarchy', enabled: limits.hasGroupOversight },
-          { label: 'Insights Dashboard', enabled: limits.hasInsightsDashboard },
-          { label: 'White-Label', enabled: limits.hasWhiteLabel },
-          { label: 'REST API & Webhooks', enabled: limits.hasAPI },
-          { label: 'Custom Report Builder', enabled: limits.hasCustomReports },
-          { label: 'CSV Export', enabled: limits.hasCSVExport },
-          { label: `Audit Retention (${limits.documentRetentionDays >= 365 ? Math.round(limits.documentRetentionDays/365) + ' yr' : limits.documentRetentionDays + ' days'})`, enabled: true },
-        ].map(f => (
-          <div key={f.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
-            <span style={{ fontSize: 'var(--text-small)' }}>{f.label}</span>
-            <span className={`badge ${f.enabled ? 'badge-approved' : 'badge-draft'}`}>{f.enabled ? 'Included' : 'Upgrade'}</span>
-          </div>
-        ))}
-      </div>
-
-      {plan !== 'enterprise' && (
-        <button className="btn-gold" onClick={() => navigate('/register?upgrade=true')} style={{ alignSelf: 'flex-start', gap: 6 }}>
-          Upgrade Plan →
-        </button>
-      )}
     </div>
   )
 }

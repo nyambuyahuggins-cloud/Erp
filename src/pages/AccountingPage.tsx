@@ -115,8 +115,24 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
     loadAll()
   }
 
-  async function markFunded(id: string) {
-    await supabase.from('funding_requests').update({ status: 'funded', funded_by: profile!.id, funded_at: new Date().toISOString() }).eq('id', id)
+  const [fundModal, setFundModal] = useState<any>(null)
+  const [fundForm, setFundForm] = useState({ funds_available: true, was_budgeted: true, payment_method: 'bank' as 'cash' | 'bank' })
+
+  function openFundModal(r: any) {
+    setFundModal(r)
+    setFundForm({ funds_available: true, was_budgeted: true, payment_method: 'bank' })
+  }
+
+  async function confirmMarkFunded() {
+    if (!fundModal) return
+    await supabase.from('funding_requests').update({
+      status: 'funded', funded_by: profile!.id, funded_at: new Date().toISOString(),
+      receipt_status: 'pending',
+      funds_available: fundForm.funds_available,
+      was_budgeted: fundForm.was_budgeted,
+      payment_method: fundForm.payment_method,
+    }).eq('id', fundModal.id)
+    setFundModal(null)
     loadAll()
   }
 
@@ -285,7 +301,7 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
                         <td style={{ color: priorityColor[r.priority] || 'var(--text-muted)', fontWeight: r.priority === 'urgent' || r.priority === 'high' ? 700 : 400, textTransform: 'capitalize', fontSize: 'var(--text-small)' }}>{r.priority || 'normal'}</td>
                         <td style={{ color: overdue ? 'var(--danger)' : 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{r.deadline ? new Date(r.deadline).toLocaleDateString() : '—'} {overdue ? '⚠️' : ''}</td>
                         <td>
-                          <button className="btn-gold" style={{ padding: '0.3rem 0.7rem', fontSize: 'var(--text-micro)' }} onClick={() => markFunded(r.id)}>Mark Funded</button>
+                          <button className="btn-gold" style={{ padding: '0.3rem 0.7rem', fontSize: 'var(--text-micro)' }} onClick={() => openFundModal(r)}>Mark Funded</button>
                         </td>
                       </tr>
                     )
@@ -393,6 +409,62 @@ export default function AccountingPage({ embedded }: { embedded?: boolean }) {
           </div>
         )}
       </div>
+
+      {/* Mark Funded modal */}
+      {fundModal && (
+        <div className="modal-backdrop" onClick={() => setFundModal(null)}>
+          <div className="card" style={{ width: '100%', maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'var(--text-lead)', margin: 0 }}>Mark Funded — {fundModal.ref}</h3>
+              <button onClick={() => setFundModal(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+            <p style={{ margin: '0 0 1.25rem', fontSize: 'var(--text-small)', color: 'var(--text-muted)' }}>
+              USD {parseFloat(fundModal.amount).toFixed(2)} for {fundModal.category}
+            </p>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label className="form-label">Were funds already available?</label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {[{ v: true, l: 'Yes, on hand' }, { v: false, l: 'No, had to source' }].map(o => (
+                  <button key={String(o.v)} type="button"
+                    className={fundForm.funds_available === o.v ? 'btn-gold' : 'btn-ghost'}
+                    style={{ flex: 1, fontSize: 'var(--text-small)' }}
+                    onClick={() => setFundForm({ ...fundForm, funds_available: o.v })}>{o.l}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label className="form-label">Was this a budgeted expenditure?</label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {[{ v: true, l: 'Yes, budgeted' }, { v: false, l: 'No, unbudgeted' }].map(o => (
+                  <button key={String(o.v)} type="button"
+                    className={fundForm.was_budgeted === o.v ? 'btn-gold' : 'btn-ghost'}
+                    style={{ flex: 1, fontSize: 'var(--text-small)' }}
+                    onClick={() => setFundForm({ ...fundForm, was_budgeted: o.v })}>{o.l}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label className="form-label">Payment method</label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {(['cash', 'bank'] as const).map(m => (
+                  <button key={m} type="button"
+                    className={fundForm.payment_method === m ? 'btn-gold' : 'btn-ghost'}
+                    style={{ flex: 1, fontSize: 'var(--text-small)', textTransform: 'capitalize' }}
+                    onClick={() => setFundForm({ ...fundForm, payment_method: m })}>{m}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button className="btn-ghost" onClick={() => setFundModal(null)}>Cancel</button>
+              <button className="btn-gold" onClick={confirmMarkFunded}>Confirm Funded</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* IET modal */}
       {showIETModal && (

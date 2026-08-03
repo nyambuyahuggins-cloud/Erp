@@ -77,8 +77,9 @@ export default function RequestsPage() {
     }
     const { data } = await supabase
       .from('funding_requests')
-      .select('*, user_profiles!requester_id(full_name), entities!entity_id(name), request_approvals(id,approver_id,action), attachments')
+      .select('*, user_profiles!requester_id(full_name, posts!post_id(hierarchy_levels!level_id(requires_endorsement))), entities!entity_id(name), request_approvals(id,approver_id,action), attachments')
       .eq('tenant_id', profile!.tenant_id)
+      .in('status', ['pending', 'endorsed', 'rejected'])
       .order('created_at', { ascending: false })
     const rows = data || []
     setRequests(rows)
@@ -391,7 +392,7 @@ export default function RequestsPage() {
           style={{ flex: 1, minWidth: 200 }}
         />
         <TabBar>
-          {(['all','pending','approved','rejected','endorsed','funded'] as const).map(s => (
+          {(['all','pending','endorsed','rejected'] as const).map(s => (
             <button key={s} className={`tab ${filterStatus === s ? 'active' : ''}`}
               style={{ fontSize: 'var(--text-micro)', textTransform: 'capitalize', padding: '0.3rem 0.625rem' }}
               onClick={() => setFilterStatus(s)}>{s}
@@ -460,7 +461,8 @@ export default function RequestsPage() {
                             routing, userId: profile!.id, userRank: effectiveRank, userCanApprove: !!effectiveCanApprove, userCanEndorse: !!effectiveCanEndorse,
                             existingApprovals: r.request_approvals || [],
                           })
-                          return (mayApprove || mayEndorse) && (
+                          const requesterRequiresEndorsement = !!(r.user_profiles?.posts?.hierarchy_levels?.requires_endorsement)
+                          return (mayApprove || (mayEndorse && requesterRequiresEndorsement)) && (
                             <button className="btn-ghost" style={{ padding: '0.3rem 0.7rem', fontSize: 'var(--text-micro)' }} onClick={() => setActionModal(r)}>Review</button>
                           )
                         })()}
@@ -652,14 +654,15 @@ export default function RequestsPage() {
                   existingApprovals: actionModal.request_approvals || [],
                 })
                 const canReject = actionNote.trim().length >= 20
+                const requesterRequiresEndorsement = !!(actionModal.user_profiles?.posts?.hierarchy_levels?.requires_endorsement)
                 // Exactly two buttons: an endorser only ever sees Reject/Endorse,
                 // an approver only ever sees Reject/Approve — never a third
-                // option stacked alongside. Endorse takes priority when both
-                // happen to apply, since an endorsement step (department
-                // manager sign-off before it reaches an executive for final
-                // approval) is what "pending" means for this rank; approval
-                // is the separate, later stage.
-                const showEndorse = mayEndorse && actionModal.status === 'pending'
+                // option stacked alongside. Endorsement is only ever in play
+                // at all if the REQUESTER's own rank is marked (in Onboarding
+                // → Hierarchy Ranks) as needing it — not every tier does, and
+                // a request from a rank that doesn't skips straight to Approve
+                // even while status is still 'pending'.
+                const showEndorse = mayEndorse && requesterRequiresEndorsement && actionModal.status === 'pending'
                 if (showEndorse) {
                   return (
                     <>

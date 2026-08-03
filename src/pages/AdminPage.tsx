@@ -125,7 +125,7 @@ function OnboardingTab({ profile, tenant, isExec }: any) {
   const [inviteError, setInviteError] = useState<string | null>(null)
 
   function blankLevel() {
-    return { name: '', rank: (levels.length ? Math.max(...levels.map(l => l.rank)) + 1 : 1), can_approve: false, can_endorse: false, can_set_targets: true, can_assign_tasks: true, can_see_budgets: false, can_see_hierarchy: false, is_accounting: false, is_hr: false, is_it_admin: false }
+    return { name: '', rank: (levels.length ? Math.max(...levels.map(l => l.rank)) + 1 : 1), can_approve: false, can_endorse: false, can_set_targets: true, can_assign_tasks: true, can_see_budgets: false, can_see_hierarchy: false, is_accounting: false, is_hr: false, is_it_admin: false, requires_endorsement: false }
   }
   function blankPost() {
     return { title: '', entity_id: entities[0]?.id || '', level_id: levels[0]?.id || '', dept_manager_post_id: '' }
@@ -292,15 +292,16 @@ function OnboardingTab({ profile, tenant, isExec }: any) {
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table className="data-table">
-              <thead><tr><th>Rank</th><th>Name</th><th>Approve</th><th>Endorse</th><th>Posts using it</th><th></th></tr></thead>
+              <thead><tr><th>Rank</th><th>Name</th><th>Approve</th><th>Endorse</th><th>Needs endorsement</th><th>Posts using it</th><th></th></tr></thead>
               <tbody>
-                {levels.length === 0 ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No ranks yet — add your first one.</td></tr>
+                {levels.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No ranks yet — add your first one.</td></tr>
                   : levels.map(l => (
                     <tr key={l.id}>
                       <td style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--gold)' }}>{l.rank}</td>
                       <td style={{ fontWeight: 500 }}>{l.name}</td>
                       <td>{l.can_approve ? <CheckCircle size={14} style={{ color: 'var(--success)' }} /> : '—'}</td>
                       <td>{l.can_endorse ? <CheckCircle size={14} style={{ color: 'var(--info)' }} /> : '—'}</td>
+                      <td>{l.requires_endorsement ? <CheckCircle size={14} style={{ color: 'var(--warning)' }} /> : '—'}</td>
                       <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>{posts.filter(p => p.level_id === l.id).length}</td>
                       <td>
                         <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
@@ -377,6 +378,16 @@ function OnboardingTab({ profile, tenant, isExec }: any) {
                   {f.label}
                 </label>
               ))}
+            </div>
+
+            <div style={{ background: 'var(--surface)', borderRadius: 8, padding: '0.75rem', marginBottom: '1.25rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-small)', cursor: 'pointer', fontWeight: 600 }}>
+                <input type="checkbox" checked={!!levelForm.requires_endorsement} onChange={e => setLevelForm({ ...levelForm, requires_endorsement: e.target.checked })} />
+                Requests from this rank need endorsement first
+              </label>
+              <p style={{ margin: '0.4rem 0 0 1.6rem', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>
+                Not every tier needs this — turn it on only for the lower/junior ranks whose requests should get a department manager's sign-off before an executive sees them for final approval. Leave it off and requests from this rank go straight to approval.
+              </p>
             </div>
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>

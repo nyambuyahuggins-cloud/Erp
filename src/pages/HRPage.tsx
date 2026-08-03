@@ -241,6 +241,7 @@ function ExpenseClaimsTab({ profile, post, entityId }: any) {
       .select('*, user_profiles!claimant_id(full_name), approver:user_profiles!approver_id(full_name), funding_requests!funding_request_id(status, funded_at)')
       .eq('tenant_id', profile.tenant_id)
       .is('deleted_at', null)
+      .in('status', ['pending', 'rejected'])
       .order('created_at', { ascending: false })
       .limit(200)
     const { data } = isManager ? await q : await q.eq('claimant_id', profile.id)
@@ -269,7 +270,7 @@ function ExpenseClaimsTab({ profile, post, entityId }: any) {
     await supabase.from('expense_claims').update({ status, approver_id: profile.id, approved_at: new Date().toISOString() }).eq('id', id)
     if (status === 'approved' && claim) {
       const ref = `FR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`
-      const { data: fr } = await supabase.from('funding_requests').insert({
+      const { data: fr, error: frErr } = await supabase.from('funding_requests').insert({
         tenant_id: profile.tenant_id,
         ref,
         requester_id: claim.claimant_id,
@@ -284,7 +285,11 @@ function ExpenseClaimsTab({ profile, post, entityId }: any) {
         receipt_status: claim.receipt_url ? 'uploaded' : 'pending',
         receipt_url: claim.receipt_url || null,
       }).select().single()
-      if (fr) await supabase.from('expense_claims').update({ funding_request_id: fr.id }).eq('id', id)
+      if (frErr) {
+        alert(`Claim approved, but sending it to Accounting failed: ${frErr.message}. Please tell IT — the claim won't show up for funding until this is fixed.`)
+      } else if (fr) {
+        await supabase.from('expense_claims').update({ funding_request_id: fr.id }).eq('id', id)
+      }
     }
     await load()
   }
