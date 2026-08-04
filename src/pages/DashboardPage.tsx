@@ -15,7 +15,13 @@ export default function DashboardPage() {
   const { profile, post, tenant, effectivePlan } = useAuth()
   const navigate = useNavigate()
   const { openTray } = useNoticesTray()
+  const level = post?.hierarchy_levels
+  const canSeeFinance = !!(level?.can_see_budgets || level?.is_accounting || (level && level.rank <= 1))
   const [stats, setStats] = useState({ pendingRequests:0, openTasks:0, activeTargets:0, pendingLeave:0, complianceDue:0 })
+  const [financeStats, setFinanceStats] = useState<{
+    totalRequested: number; totalApproved: number; totalPending: number; totalFunded: number
+    byEntity: { name: string; amount: number }[]; byWeek: { label: string; amount: number }[]
+  } | null>(null)
   const [recentRequests, setRecentRequests] = useState<any[]>([])
   const [notices, setNotices] = useState<any[]>([])
   const [compliance, setCompliance] = useState<any[]>([])
@@ -60,6 +66,37 @@ export default function DashboardPage() {
     const compData = compRes.data || []
     setStats(statsData); setRecentRequests(recent); setNotices(noticeData); setCompliance(compData)
     offlineQueue.cacheSet(cacheKey, { stats:statsData, recent, notices:noticeData, compliance:compData }).catch(()=>{})
+
+    if (canSeeFinance) {
+      const since = new Date(); since.setDate(since.getDate() - 56) // 8 weeks of trend data
+      const { data: allRequests } = await supabase.from('funding_requests')
+        .select('amount, status, entity_id, created_at, entities!entity_id(name)')
+        .eq('tenant_id', tid).neq('status', 'rejected').gte('created_at', since.toISOString())
+
+      const rows = allRequests || []
+      const totalRequested = rows.reduce((s, r) => s + parseFloat(r.amount), 0)
+      const totalApproved = rows.filter(r => r.status === 'approved').reduce((s, r) => s + parseFloat(r.amount), 0)
+      const totalPending = rows.filter(r => r.status === 'pending' || r.status === 'endorsed').reduce((s, r) => s + parseFloat(r.amount), 0)
+      const totalFunded = rows.filter(r => r.status === 'funded').reduce((s, r) => s + parseFloat(r.amount), 0)
+
+      const entityTotals = new Map<string, number>()
+      for (const r of rows) {
+        const name = (r as any).entities?.name || 'Unassigned'
+        entityTotals.set(name, (entityTotals.get(name) || 0) + parseFloat(r.amount))
+      }
+      const byEntity = [...entityTotals.entries()].map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount)
+
+      const weekTotals = new Map<string, number>()
+      for (const r of rows) {
+        const d = new Date(r.created_at)
+        const weekStart = new Date(d); weekStart.setDate(d.getDate() - d.getDay())
+        const label = weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        weekTotals.set(label, (weekTotals.get(label) || 0) + parseFloat(r.amount))
+      }
+      const byWeek = [...weekTotals.entries()].map(([label, amount]) => ({ label, amount })).slice(-8)
+
+      setFinanceStats({ totalRequested, totalApproved, totalPending, totalFunded, byEntity, byWeek })
+    }
     setLoading(false)
   }
 
@@ -137,6 +174,68 @@ export default function DashboardPage() {
               <p style={{ margin:0, fontSize:'var(--text-micro)', color:'var(--text-muted)', lineHeight:1.4 }}>{card.label}</p>
             </button>
           ))}
+        </div>
+      )}
+
+      {canSeeFinance && financeStats && (
+        <div className="card" style={{ marginBottom: 'var(--sp-6)' }}>
+          <h3 style={{ margin: '0 0 var(--sp-4)', fontSize: 'var(--text-small)', fontWeight: 600, color: 'var(--text-primary)' }}>
+            Finance Summary <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 'var(--text-micro)' }}>· last 8 weeks</span>
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px,1fr))', gap: 'var(--sp-4)', marginBottom: 'var(--sp-5)' }}>
+            {[
+              { label: 'Total Requested', value: financeStats.totalRequested, color: 'var(--text-primary)' },
+              { label: 'Awaiting Funds', value: financeStats.totalApproved, color: 'var(--gold)' },
+              { label: 'Pending Decision', value: financeStats.totalPending, color: 'var(--warning)' },
+              { label: 'Funded', value: financeStats.totalFunded, color: 'var(--success)' },
+            ].map(f => (
+              <div key={f.label}>
+                <p style={{ margin: 0, fontFamily: "'JetBrains Mono', monospace", fontSize: 'var(--text-lead)', fontWeight: 700, color: f.color }}>
+                  USD {f.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+                <p style={{ margin: '2px 0 0', fontSize: 'var(--text-micro)', color: 'var(--text-muted)' }}>{f.label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px,1fr))', gap: 'var(--sp-6)' }}>
+            {financeStats.byEntity.length > 0 && (
+              <div>
+                <p style={{ margin: '0 0 0.6rem', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>By Entity</p>
+                {financeStats.byEntity.slice(0, 6).map(e => {
+                  const max = financeStats.byEntity[0].amount || 1
+                  return (
+                    <div key={e.name} style={{ marginBottom: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-micro)', marginBottom: 2 }}>
+                        <span style={{ color: 'var(--text-primary)' }}>{e.name}</span>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-muted)' }}>USD {e.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                      </div>
+                      <div style={{ height: 4, borderRadius: 2, background: 'var(--surface)' }}>
+                        <div style={{ height: '100%', width: `${(e.amount / max) * 100}%`, background: 'var(--gold)', borderRadius: 2 }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {financeStats.byWeek.length > 0 && (
+              <div>
+                <p style={{ margin: '0 0 0.6rem', fontSize: 'var(--text-micro)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>By Week</p>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80 }}>
+                  {financeStats.byWeek.map(w => {
+                    const max = Math.max(...financeStats.byWeek.map(x => x.amount)) || 1
+                    return (
+                      <div key={w.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} title={`${w.label}: USD ${w.amount.toLocaleString()}`}>
+                        <div style={{ width: '100%', height: Math.max(3, (w.amount / max) * 64), background: 'var(--gold)', borderRadius: '3px 3px 0 0' }} />
+                        <span style={{ fontSize: '0.55rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{w.label}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
